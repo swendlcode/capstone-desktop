@@ -27,9 +27,15 @@ export function OutputLocationPane({ settings }: { settings: Settings }) {
         label="Specific folder"
       />
 
-      <div className={`ml-6 flex flex-col gap-3 ${specific ? '' : 'opacity-40'}`}>
+      {/* Dimmed by token, not by `opacity`: the Button and Checkbox below dim
+          themselves when disabled, and the two would multiply. */}
+      <div className="ml-6 flex flex-col gap-3">
         <div className="flex items-center gap-3">
-          <span className="mono min-w-0 flex-1 truncate rounded-md border border-gray-600 bg-gray-700 px-3 py-2 text-xs text-gray-300">
+          <span
+            className={`mono min-w-0 flex-1 truncate rounded-md border border-gray-600 bg-gray-700 px-3 py-2 text-xs ${
+              specific ? 'text-gray-300' : 'text-gray-500'
+            }`}
+          >
             {settings.outputDir ?? 'Default Capstone folder'}
           </span>
           <Button

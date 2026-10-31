@@ -1,4 +1,17 @@
 {
+  "0.2.0": {
+    "date": "2026-10-31",
+    "title": "Cover art, right-click and shareable templates",
+    "summary": "The queue now looks like your library, every row has a menu, and a template is a file you can send to someone.",
+    "highlights": [
+      "Album art shows next to every file in the queue.",
+      "Right-click a row to play it, reveal it, copy its path, re-analyze it or drop it.",
+      "Export a template to a file and import one back. No account, no sign-in.",
+      "A short tour on first launch, reopenable from the title bar.",
+      "Dark and light themes rebuilt for readability: no more unreadable greys or dimmed-out fields.",
+      "Version and a support link now sit along the bottom of the window."
+    ]
+  },
   "0.1.0": {
     "date": "2026-10-31",
     "title": "First release",

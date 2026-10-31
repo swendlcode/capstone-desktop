@@ -130,6 +130,20 @@ pub struct Template {
     pub bands: Vec<BandSetting>,
 }
 
+/// What importing a shared template file produced.
+///
+/// The author's note rides beside the template rather than on it, because
+/// `Template` has no field to keep it in. The importer quotes it once, in the
+/// line confirming what was added.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedTemplate {
+    pub template: Template,
+    /// Empty when the file carried none, which every template exported today
+    /// does (see descriptions.ts on the frontend).
+    pub description: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OutputFormat {

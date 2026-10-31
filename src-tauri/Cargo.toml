@@ -1,6 +1,6 @@
 [package]
 name = "capstone"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 # aifc and the rubato/audioadapter family declare 1.87; pinning it here turns a
 # too-old toolchain into one clear cargo message instead of a wall of type
@@ -95,3 +95,17 @@ signalsmith-stretch = "0.1.3"
 rustfft = "6.4.1"
 
 rayon = "1.12.0"
+
+# Cover art. lofty reads the embedded picture out of ID3v2, MP4 ilst and Vorbis
+# comments through one API, which covers every container Capstone decodes, so
+# there is no per-format branch to keep in step with the decoder list.
+lofty = "0.25.5"
+
+# Only the codecs embedded art is actually stored in, plus PNG for writing the
+# thumbnail back out. The default feature set pulls in a dozen more decoders
+# that nothing here can reach, and each one is compile time and attack surface
+# for a byte string that came out of someone else's tagger.
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+
+base64 = "0.22.1"
+

@@ -58,15 +58,24 @@ src/                      React frontend
   main.tsx                Theme-before-paint, QueryClient, StrictMode entry
   index.css               Design tokens (dark + light) + Tailwind layers
   components/
-    ui/                   Primitives — Button, Input, Checkbox, Radio, CapstoneMark, icons.ts
-    layout/               TitleBar (drag region + traffic-light inset), TabBar
-    process/              QueueTable (virtualized), QueueRow, MetricCell, StatusCell,
-                          QueueToolbar, ProcessFooter, DropTarget, columns.ts, format.ts
-    template/             TemplatePicker, the four setting cards, MultibandEditor,
-                          SliderField / NumberField, useTemplateEditor
+    ui/                   Primitives — Button, Input, Checkbox, Radio, Modal,
+                          ContextMenu, CapstoneMark, icons.ts
+    layout/               TitleBar (drag region + traffic-light inset), TabBar,
+                          UpdateBadge, StatusBar (the mark lives here, not in the
+                          title bar: beside the traffic lights it crowded the tabs
+                          and read as chrome rather than as a byline)
+    process/              QueueTable (virtualized), QueueRow, CoverCell, MetricCell,
+                          StatusCell, QueueToolbar, ProcessFooter, DropTarget,
+                          rowMenu + useRowActions (right-click), columns.ts, format.ts
+    template/             TemplatePicker + TemplateMenu, TemplateShare, the four
+                          setting cards, MultibandEditor, SliderField / NumberField,
+                          useTemplateEditor, useTemplateShare
     personalize/          PersonalizeRail + the three panes
+    onboarding/           First-run tour (four steps in the shared Modal) and the
+                          title-bar action that reopens it
   pages/                  ProcessPage, TemplatePage, PersonalizePage
-  hooks/                  useQueue (+ useQueueSync), useTemplates, useSettings, useTheme
+  hooks/                  useQueue (+ useQueueSync), useTemplates, useSettings,
+                          useTheme, useCoverArt, useOnboarding, useAppUpdate
   services/               capstoneService — THE ONLY module that calls invoke()
   stores/                 queueStore, uiStore, settingsStore (Zustand)
   types/                  The TS half of the IPC contract; re-exported from index.ts
@@ -85,9 +94,15 @@ src-tauri/
     error.rs              CapstoneError, serialized to a plain string for IPC
     models/               THE IPC CONTRACT. Every struct is camelCase
     settings.rs           settings.json load/save + defaults
-    templates.rs          Stock templates (code, not data) + templates.json
+    templates.rs          Load/save; templates/catalog.rs is the stock set (code,
+                          not data), templates/share.rs the shared-file format
+    cover.rs              Embedded artwork → one small PNG data URI, memoised per
+                          path; the queue is the cache's only ceiling, so
+                          `clear_queue` is what brings it down
     commands/             Thin Tauri handlers, one file per domain
     jobs/                 mod.rs (queue runner), analysis.rs (background), output.rs
+                          (+ output_tests.rs: tests live beside, not inside, any
+                          module close to the 300-line cap)
     audio/
       mod.rs              DecodedAudio (planar) + dB helpers
       decode.rs           symphonia probe/decode → planar f32, plus tag extraction
@@ -190,7 +205,13 @@ keeps that checkable at a glance.
   `clear_queue`
 - **process**: `start_processing` (spawns and returns at once), `cancel_processing`
 - **template**: `get_templates`, `save_template`, `duplicate_template`,
-  `delete_template`
+  `delete_template`, `export_template`, `import_template` (one template as a
+  `.json` file anybody can post: no server, no account, the file *is* the
+  feature). Both drive a native dialog from Rust and never hand the bytes to
+  the webview. Import is the only door a stranger's values come through, so
+  everything about trusting them lives in `templates::share::from_json` — fresh
+  id, `isStock: false`, a name suffixed rather than overwriting one already
+  there, and every field clamped to the range the Configure tab enforces.
 - **settings**: `get_settings`, `update_settings`
 - **dialog**: `open_output_folder`, `pick_files`, `pick_folder`
 
@@ -425,6 +446,66 @@ button** anywhere on the Configure tab: every control commits through
 `save_template`, and a stock template disables its inputs rather than taking edits
 it would have to throw away.
 
+**A card's hint is derived from the template, never typed as a constant.** The
+Output Volume card carried the fixed line "-12.5 dB keeps the contrast between
+loud and quiet parts." It was true of Festival and of nothing else shipped —
+Club is -11, Stream -14, Vinyl Rip and Archive -16, and a user template is
+whatever was typed — so for four of the five it stated a figure the field
+directly beneath it contradicted. `volumeHint()` in `OutputVolumeCard.tsx`
+reads `template.targetLufs`; anything else that quotes a setting does the same.
+
+### Sharing a template
+
+A template exports as one `.json` file and imports the same way: no server, no
+account, no gallery. The file **is** the feature, and `templates/share.rs` owns
+both halves of it.
+
+Both commands drive a native dialog from Rust and write or read the file there.
+The webview never sees the bytes: a template is the user's own settings and
+there is nothing for the frontend to do with them but hand them straight back.
+
+`formatVersion` is checked exactly, not compared as a range. A new field is
+additive and arrives with a serde default, the same way `Template` tolerates
+one; the version only moves for a change an older build genuinely could not
+read, and then the refusal says which format the file is and which this build
+reads.
+
+Import is the only door a stranger's numbers come through, so everything about
+trusting them lives in `share::from_json`:
+
+- A fresh uuid and `isStock: false`, so an imported file can never wear a stock
+  id and shadow a shipped template.
+- A name already taken gets a numeric suffix rather than overwriting. Two
+  people's "Warehouse" are two templates; an import that quietly replaced the
+  one the user spent an evening tuning is the worst kind of data loss, the
+  invisible kind.
+- **Every value is clamped to the range the Configure tab itself enforces.**
+  That is not politeness. `headroomDb` becomes the limiter's ceiling and
+  `makeupDb` is raw gain, so a hand-edited or hostile file could otherwise ask
+  for a ceiling above full scale or 400 dB of makeup, and the first the user
+  would know of it is the damage. Clamping to the edge lands them where a
+  slider would have stopped them anyway.
+- Bands are **re-tiled**, not validated: the submitted crossovers are sorted
+  and laid end to end from 20 Hz to 20 kHz with a minimum width reserved for
+  every band above. `multiband` reads each `highHz` as the next band's `lowHz`
+  without checking, so a file with a gap would come back with a notch at every
+  edge and nothing in the UI to explain it.
+
+Three things are refused rather than clamped, because they are not a template
+being optimistic — they are not a template:
+
+- A file over `MAX_FILE_BYTES` (64 KB). The import command reads through
+  `read_capped`, one byte past that ceiling, so an oversized file is refused by
+  its size without having been pulled into memory whole first.
+- A band count outside 1..=8.
+- A non-finite number. NaN came from a broken writer, not from a user, and
+  `f64::clamp` panics on it.
+
+The same bounds run over a template coming **off disk** (`share::clamped`), so a
+hand-edited `templates.json` is as safe as an imported file. A template that
+cannot be bounded at all keeps its name and takes Festival's values, logged at
+`warn`: dropping something the user made without telling them is worse.
+
 ### Settings
 
 Output location (specific folder or beside the source), output folder, mirror the
@@ -487,6 +568,120 @@ is worse than a track that was never processed, because the owner has to find it
 again by ear. ALAC is the one exception, stated in the UI rather than discovered:
 the CAF writer has no `info` chunk.
 
+## Window chrome
+
+Three strips, and which one a thing belongs in is settled:
+
+- **Title bar** — tabs on the left (`pl-[68px]`, clear of the traffic lights at
+  x:16), then the update badge, the onboarding help action and the theme
+  toggle on the right. The bar is a `flex` row with a full-bleed drag layer
+  behind it; wrappers stay `pointer-events-none` so the empty width still
+  reaches that layer, and only the controls take their clicks back.
+- **Status bar** — the signature strip along the bottom: mark, name, version,
+  copyright, and the support link. The version is read from the bundle with
+  `getVersion()`, never written as a literal, or it drifts the moment a release
+  ships and then disagrees with the version the updater reports one strip up.
+  The support link goes through the opener plugin; a bare `<a href>` navigates
+  the webview itself and replaces the app with a web page, with no way back.
+- **The pages** — everything else.
+
+**The mark lives in the status bar, not the title bar.** Beside the traffic
+lights it crowded the tabs and read as chrome rather than as a byline, and the
+title bar was three competing groups. With the left side free the tabs take it.
+The status bar is one short muted row on purpose: a second toolbar down there
+costs the queue table the height it needs.
+
+## First run
+
+A four-step tour in the shared `Modal`, mounted at the **root** rather than on
+the Process tab: it is portalled over the whole window and has to survive a tab
+switch while it is open. It renders nothing once the user has seen it.
+
+The "seen" flag is `localStorage['capstone:onboardingDone']`, read
+**synchronously at module load** in `hooks/useOnboarding.ts`. Deciding it in an
+effect mounts the dialog for one frame on every relaunch, which is exactly the
+flash an existing user must not see. Blocked site data reads as *already seen*:
+a tour that cannot remember being dismissed would come back every launch, which
+is worse than never showing it.
+
+Every way out counts as having done it — Skip, Escape, the backdrop, the close
+button and the last step all land on `finish()` — so none of them leaves the
+user to be interrupted again tomorrow. The help action in the title bar
+reopens it from step one.
+
+Copy is two or three words of title and **one line** of body per step. A step
+that needs a paragraph means the screen behind it is unclear, and the fix for
+that is the screen.
+
+## Cover art
+
+`cover.rs` turns a file's embedded picture into a small PNG `data:` URI the
+table can put straight in an `<img src>`. Two rules, both about size:
+
+- **Nothing full-size ever leaves that module.** The picture is decoded, scaled
+  to 64px on its long edge (roughly 2x the 28px the table draws, so it still
+  looks right on a retina panel) and re-encoded before it is base64'd. A real
+  cover is commonly 1400x1400 and a megabyte or two; fifty of those, plus a
+  third again for base64, held in React state is hundreds of megabytes of
+  renderer heap for a thumbnail. PNG rather than JPEG because the input may
+  carry alpha and there is no quality decision to make at this size.
+- **The result is memoised per path**, and `None` is cached as well as `Some`:
+  most files in a real library carry no art, and re-probing them on every
+  scroll is the same wasted work as re-decoding. The cache is unbounded on
+  purpose — an entry is a few kilobytes and the keys are the paths the user
+  added, so the queue is the ceiling, which makes `clear_queue` the thing that
+  brings it down. Keyed on path alone, so a file re-tagged underneath us keeps
+  its old thumbnail until a restart.
+
+The lock is **not** held across the decode. Two rows asking for the same path at
+once both do the work, which is cheap and rare; blocking every other row behind
+one slow file is neither. `get_cover_art` is `spawn_blocking` for the same
+reason: the first call for a path opens a file and decodes a full-size image,
+and on the IPC thread that stalls every other command behind it.
+
+Artwork never fails. No picture, an unreadable file and a format we do not
+decode all answer `null`, and the UI draws the placeholder: a tagger that wrote
+something strange must not become an error in the UI. Every tag is searched,
+not just the primary one — a converted file often keeps its art in an ID3v2
+block while its primary tag is something else, and reading only the primary tag
+reports no artwork on a file that visibly has some.
+
+On the frontend `useCoverArt` keys on the **path**, matching the backend cache,
+so the same file queued twice hits one entry on both sides. It is
+`staleTime: Infinity` with no refetch on mount or focus: artwork is baked into
+the file, so it is the rare thing that genuinely cannot go stale while the app
+is open, and scrolling the queue would otherwise refire the query for every row
+that leaves and re-enters the viewport.
+
+## The row menu
+
+Right-click on a queue row: Play file, Reveal in Finder, Copy path, Re-analyze,
+Open output, Remove from queue. `ContextMenu` is the shared primitive;
+`rowMenu.tsx` is only the entry list, and `useRowActions` holds the shell calls.
+
+- **Every row shows the same entries in the same order.** What a row cannot do
+  right now is greyed out, never dropped: a menu that changes shape per row has
+  to be re-read every time it opens, and the user loses where Remove sits.
+  `analyzing` disables Re-analyze (it would race the read in flight) and
+  `processing` disables Re-analyze and Remove (the runner is holding that row).
+- **Re-analyze is the one entry with no other affordance.** Before it, an
+  errored row could only be re-read by removing it and adding it back.
+- The menu is **portalled to `document.body`** so no ancestor's `overflow` or
+  `transform` can clip it, and clamped to the viewport in a layout effect after
+  measuring, so it paints once at the clamped position instead of flashing at
+  the raw one. Listeners are registered in the **capture** phase: scroll does
+  not bubble, and a row that stops propagation would otherwise trap the menu
+  open. Scroll closes it, because the row it belongs to is in a virtualized
+  list and scrolling moves that row out from under a menu positioned once in
+  viewport coordinates.
+- The shell calls go through a hook, not the row, for the same reason `invoke`
+  lives behind the service layer, and they are **mutations** so a failure — a
+  file the user moved since dropping it is the everyday one — is something
+  react-query owns rather than an unhandled rejection in the console. Clipboard
+  writes fall back to a hidden textarea: `navigator.clipboard` is exposed only
+  in a secure context, which the webview's custom origin is not on every
+  platform.
+
 ## Design system
 
 CSS custom properties in `src/index.css`; Tailwind extends `capstone.*` and
@@ -494,10 +689,15 @@ CSS custom properties in `src/index.css`; Tailwind extends `capstone.*` and
 
 - `--capstone-black` `#0C0C0C` (page), `--capstone-sky` `#3FC5F2` (accent),
   `--capstone-white` `#F7F7F7` (foreground), plus a nine-step gray ramp
+- `--capstone-red` `#FF6B6B` is the one hue outside the accent and the ramp. It
+  exists because a failed file has to separate from a queued one at a glance
+  and the ramp has only greys to say it with. Use `text-capstone-red`, never a
+  literal and never Tailwind's stock red: both were in the tree at once, in
+  five places, and neither followed the light theme.
 - Fonts: **Syne** for headings and labels, **DM Mono** for dB, cents,
   percentages and file paths
 
-Two rules that break things quietly if ignored:
+Four rules that break things quietly if ignored:
 
 - **Tokens are space-separated RGB triplets** (`63 197 242`), with no `rgb()`
   wrapper and no commas, so Tailwind's `<alpha-value>` placeholder can compose
@@ -508,8 +708,44 @@ Two rules that break things quietly if ignored:
   literal colours, which is what lets every component class stay
   theme-agnostic. It is selected by `<html data-theme="light">` rather than
   `prefers-color-scheme`, because the app offers the choice. The light accent is
-  several steps darker (`#1288BE`): `#3FC5F2` on white is far below a readable
+  several steps darker (`#0D7099`): `#3FC5F2` on white is far below a readable
   contrast ratio.
+- **The ramp has two halves, and mixing them is what broke the dark theme.**
+  `900/800/700` are **planes** — the page sits below them and each step is a
+  surface you can land an element on; none of them is legible as text.
+  `600/500/400/300/200/100` are **ink**, each clearing 4.5:1 on the darkest
+  plane it is used over (600 is the floor at 3:1, for hairlines, status dots
+  and 9-10px unit labels). Reaching into the plane half for text, the way
+  `text-gray-600` did for the drop-zone caption, buys 1.5:1 and an invisible
+  control; reaching into the ink half for a fill buys a grey slab. The dark
+  values are **not** a numeric mirror of the light ones — planes are spaced by
+  CIE L*, ink is solved against the worst plane it actually sits on. Mirroring
+  is what the old ramp did, and it put four planes inside a 1.26:1 band. The
+  light theme had the matching bug from the other side: `--gray-900` was pure
+  white, the same value as the page, so the shell had no plane of its own and
+  the queue's `hover:bg-gray-900` was a literal no-op.
+- **Disabled is a step down the ink ramp, never an `opacity`.** A disabled
+  control paints in `gray-500` on a card (4.0:1 dark, 4.5:1 light) or
+  `gray-400` inside a well such as an `Input` (4.6:1 dark, 5.1:1 light), at
+  full alpha. `opacity` multiplies down the tree: `FieldRow` used to dim a
+  dependent row at `opacity-40` while the `NumberField` in it dimmed itself at
+  `opacity-50`, so the pitch card's "When off key by at least" and its cents
+  field rendered at an effective 0.2 — 1.38:1 in dark, in the state that card
+  ships in. Controls own their disabled look (`Input`, `Checkbox`, `Radio`);
+  a container dims its own label and nothing else. The one place `opacity`
+  still disables is a solid control that fades as a whole and holds no nested
+  dimming of its own — `Button`, and the slider track — which is why those are
+  safe and a text row is not.
+
+
+**One theme for the whole app, held outside React.** `useTheme` publishes
+through `useSyncExternalStore`; it used to be `useState` inside the hook, which
+hands every caller its own copy. The title bar's toggle repainted `<html>` for
+everyone, but a second consumer — a status bar, an onboarding step, a settings
+pane — went on rendering the icon and label of whichever theme the app was in
+when it mounted, and nothing recovered it short of a remount. The accent
+override is a single value for both themes, which is a limit of the accent
+contract rather than an oversight: there is nowhere to keep a per-theme pair.
 
 ## Tests
 
@@ -613,6 +849,11 @@ for what that means for in-app updating.
   An import that reads as the real package resolves there. Anything a plugin
   reaches for and the shim does not re-export is `undefined` at runtime with no
   build error.
+- **Play file or Open output does nothing, with no build error** → the opener
+  plugin's `opener:default` set covers urls and reveal-in-dir but *not*
+  `open_path`, and `allow-open-path` on its own enables the command with an
+  empty scope, which refuses every path. `capabilities/default.json` carries the
+  permission **and** a `**` path scope; both halves are needed.
 - **The Processor Load slider appears to do nothing** → something is using
   rayon's global pool instead of the explicit one in `jobs::run_inner`.
 - **Every band edge has a notch** → the allpass compensation in

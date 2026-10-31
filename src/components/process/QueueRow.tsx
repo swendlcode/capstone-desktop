@@ -1,9 +1,13 @@
 import { memo } from 'react';
+import { ContextMenu, useContextMenu } from '../ui/ContextMenu';
 import { Trash } from '../ui/icons';
+import { CoverCell } from './CoverCell';
 import { MetricCell } from './MetricCell';
 import { StatusCell } from './StatusCell';
 import { QUEUE_GRID, ROW_HEIGHT } from './columns';
 import { fmtCents, fmtClips, fmtDb, fmtDuration, fmtLufs } from './format';
+import { rowMenu } from './rowMenu';
+import { useRowActions } from './useRowActions';
 import type { QueuedFile } from '../../types';
 
 interface QueueRowProps {
@@ -11,11 +15,12 @@ interface QueueRowProps {
   selected: boolean;
   onSelect: (id: string, additive: boolean) => void;
   onRemove: (id: string) => void;
+  onReanalyze: (id: string) => void;
 }
 
 /**
- * One queued file: name, the four measurements, status, and a remove action
- * that appears on hover.
+ * One queued file: cover, name, the four measurements, status, and a remove
+ * action that appears on hover. Right-clicking it opens the row menu.
  *
  * Memoized because the table is driven by `capstone://file-updated`, which
  * fires once per row per status change. During a run of several hundred files
@@ -27,9 +32,12 @@ export const QueueRow = memo(function QueueRow({
   selected,
   onSelect,
   onRemove,
+  onReanalyze,
 }: QueueRowProps) {
   const a = file.analysis;
   const r = file.result;
+  const menu = useContextMenu();
+  const shell = useRowActions();
 
   // Before → after, from the two sources the contract gives us: `analysis` is
   // what was measured, `result` is what the run did. Where the run reports
@@ -48,12 +56,25 @@ export const QueueRow = memo(function QueueRow({
     <div
       role="row"
       aria-selected={selected}
-      onMouseDown={(e) => onSelect(file.id, e.metaKey || e.ctrlKey || e.shiftKey)}
+      onMouseDown={(e) => {
+        // Left button only. A right-click selects through the handler below,
+        // and letting both fire ran the selection twice for one click.
+        if (e.button !== 0) return;
+        onSelect(file.id, e.metaKey || e.ctrlKey || e.shiftKey);
+      }}
+      onContextMenu={(e) => {
+        // The menu acts on this row, so this row has to be the selected one
+        // before it opens.
+        onSelect(file.id, false);
+        menu.open(e);
+      }}
       style={{ gridTemplateColumns: QUEUE_GRID, height: ROW_HEIGHT }}
       className={`group grid items-center gap-3 border-b border-gray-800 px-4 transition-colors ${
         selected ? 'bg-capstone-sky/10' : 'hover:bg-gray-900'
       }`}
     >
+      <CoverCell path={file.path} />
+
       <div className="flex min-w-0 items-baseline gap-2" title={file.path}>
         <span className="truncate text-[13px] text-capstone-white">{file.filename}</span>
         {a && (
@@ -87,6 +108,27 @@ export const QueueRow = memo(function QueueRow({
       >
         <Trash size={14} color="currentColor" variant="Linear" />
       </button>
+
+      {menu.at && (
+        <ContextMenu
+          x={menu.at.x}
+          y={menu.at.y}
+          onClose={menu.close}
+          items={rowMenu(file, {
+            onPlay: () => shell.open.mutate(file.path),
+            onReveal: () => shell.reveal.mutate(file.path),
+            onCopyPath: () => shell.copyPath.mutate(file.path),
+            onReanalyze: () => onReanalyze(file.id),
+            // Checked here too, not just disabled in the menu: the entry and
+            // the handler read the same field, and only one of them is visible.
+            onOpenOutput: () => {
+              const out = file.result?.outputPath;
+              if (out) shell.open.mutate(out);
+            },
+            onRemove: () => onRemove(file.id),
+          })}
+        />
+      )}
     </div>
   );
 });

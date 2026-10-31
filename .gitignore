@@ -32,7 +32,14 @@ vite.config.d.ts
 !.vscode/extensions.json
 .idea
 .DS_Store
-Icon*
+# No pattern here for the macOS custom-folder-icon sidecar. The usual one,
+# `Icon*`, has no slash, so it matches at every level, and the checkout is
+# case-insensitive: it was quietly keeping both src-tauri/icons/ and
+# src/components/ui/icons.ts out of the repository. A fresh clone would
+# have had no icon barrel and no bundle icons. The sidecar's real name ends
+# in a carriage return, which cannot be written in this file at all (git
+# strips a trailing CR from every line), and it only exists if someone sets
+# a folder icon by hand. Not worth the trade.
 *.suo
 *.ntvs*
 *.njsproj

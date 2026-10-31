@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react';
 import { TitleBar } from './components/layout/TitleBar';
+import { StatusBar } from './components/layout/StatusBar';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { OnboardingTour } from './components/onboarding';
 import { useUiStore } from './stores/uiStore';
 import { useQueueSync } from './hooks/useQueue';
 
@@ -35,6 +37,14 @@ export default function App() {
           </Suspense>
         </ErrorBoundary>
       </main>
+      {/* Below every page, including the Process footer: it signs the window,
+          it is not part of any one tab. */}
+      <StatusBar />
+
+      {/* Mounted at the root, not on the Process tab: the tour is portalled
+          over the whole window and must survive a tab switch while it is open.
+          It renders nothing once the user has seen it. */}
+      <OnboardingTour />
     </div>
   );
 }

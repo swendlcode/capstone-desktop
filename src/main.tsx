@@ -6,7 +6,14 @@ import { applyTheme, readPersistedAccent, readPersistedTheme } from './hooks/use
 import './index.css';
 
 // Before React mounts, so the first paint is the user's theme rather than the
-// default flashing and then swapping.
+// default flashing and then swapping. ES imports are evaluated first, so
+// index.css is already applied by the time this line runs.
+//
+// It cannot cover the paint before this module runs at all. The stylesheet's
+// `:root` block is the dark set, so a dark user never sees a wrong frame; a
+// light user gets one dark frame between the CSS landing and this line.
+// Closing that needs data-theme set from index.html's <head>, which is not
+// this file's to write.
 applyTheme(readPersistedTheme(), readPersistedAccent());
 
 window.addEventListener('error', (e) => {

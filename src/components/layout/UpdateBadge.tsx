@@ -47,13 +47,13 @@ export function UpdateBadge() {
 
   if (stage === 'error') {
     return (
-      <div className="flex items-center gap-1 rounded-md border border-red-500/40 bg-red-500/10 py-1 pl-2 pr-1">
-        <span className="text-xs font-medium text-red-300" title={error ?? undefined}>
+      <div className="flex items-center gap-1 rounded-md border border-capstone-red/40 bg-capstone-red/10 py-1 pl-2 pr-1">
+        <span className="text-xs font-medium text-capstone-red" title={error ?? undefined}>
           Update failed
         </span>
         <button
           onClick={() => setDismissed(true)}
-          className="ml-0.5 text-red-300/60 transition-colors hover:text-red-300"
+          className="ml-0.5 text-capstone-red/60 transition-colors hover:text-capstone-red"
           aria-label="Dismiss"
         >
           <CloseCircle size={13} color="currentColor" variant="Linear" />

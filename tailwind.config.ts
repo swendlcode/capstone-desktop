@@ -19,6 +19,7 @@ export default {
         capstone: {
           black: 'rgb(var(--capstone-black) / <alpha-value>)',
           sky: 'rgb(var(--capstone-sky) / <alpha-value>)',
+          red: 'rgb(var(--capstone-red) / <alpha-value>)',
           white: 'rgb(var(--capstone-white) / <alpha-value>)',
         },
         gray: {

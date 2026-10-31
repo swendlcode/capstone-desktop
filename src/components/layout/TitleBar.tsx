@@ -1,7 +1,8 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { CapstoneMark, Moon, Sun } from '../ui/icons';
+import { Moon, Sun } from '../ui/icons';
 import { useTheme } from '../../hooks/useTheme';
 import { UpdateBadge } from './UpdateBadge';
+import { OnboardingHelpButton } from '../onboarding';
 import { TabBar } from './TabBar';
 
 export function TitleBar() {
@@ -15,30 +16,31 @@ export function TitleBar() {
     getCurrentWindow().startDragging().catch(() => {});
   };
 
+  // The mark lives in the StatusBar instead of here. With the left side free,
+  // the tabs take it rather than sitting wedged between a logo and the theme
+  // toggle, which is what made the bar read as three competing groups.
   return (
-    <div className="relative grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-gray-700 bg-gray-900 px-4">
+    <div className="relative flex h-12 shrink-0 items-center justify-between gap-3 border-b border-gray-700 bg-gray-900 px-4">
       <div
         data-tauri-drag-region
         onMouseDown={startWindowDrag}
         className="absolute inset-0 z-0 cursor-default"
       />
 
-      {/* Left — the mark, clear of the traffic lights, which sit at x:16. */}
-      <div className="pointer-events-none z-10 flex items-center gap-2 pl-[68px]">
-        <CapstoneMark size={16} className="text-capstone-sky" />
-        <span className="text-sm font-bold tracking-tight text-capstone-white">Capstone</span>
-      </div>
-
-      <div className="pointer-events-none z-10 flex justify-center">
+      {/* pl-[68px] keeps the tabs clear of the traffic lights, which sit at x:16.
+          The wrappers stay pointer-events-none so the bar's empty width still
+          reaches the drag layer; only the controls take the clicks back. */}
+      <div className="pointer-events-none z-10 flex items-center pl-[68px]">
         <div className="no-drag pointer-events-auto">
           <TabBar />
         </div>
       </div>
 
-      <div className="pointer-events-none z-10 flex items-center justify-end gap-2">
+      <div className="pointer-events-none z-10 flex items-center gap-2">
         <div className="no-drag pointer-events-auto">
           <UpdateBadge />
         </div>
+        <OnboardingHelpButton />
         <button
           onClick={toggleTheme}
           className="no-drag pointer-events-auto flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-capstone-white"

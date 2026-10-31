@@ -17,16 +17,15 @@ const LABELS: Record<FileStatus, string> = {
 
 // The accent carries live and finished states and nothing else, so a glance
 // down the column separates what the app is doing from what is merely queued.
-// `error` is the one literal colour in the page: the palette has no red, and a
-// failed file that reads grey like a queued one is a file the user never
-// notices. See the report note about promoting it to a token.
+// `error` is the palette's own danger token, which exists because a failed file
+// that reads grey like a queued one is a file the user never notices.
 const TONES: Record<FileStatus, string> = {
   pending: 'text-gray-500',
   analyzing: 'text-gray-300',
   analyzed: 'text-gray-200',
   processing: 'text-capstone-sky',
   done: 'text-capstone-sky',
-  error: 'text-[#ff6b6b]',
+  error: 'text-capstone-red',
 };
 
 const DOTS: Record<FileStatus, string> = {
@@ -35,7 +34,7 @@ const DOTS: Record<FileStatus, string> = {
   analyzed: 'bg-gray-400',
   processing: 'bg-capstone-sky animate-pulse',
   done: 'bg-capstone-sky',
-  error: 'bg-[#ff6b6b]',
+  error: 'bg-capstone-red',
 };
 
 export function StatusCell({ status, error }: StatusCellProps) {

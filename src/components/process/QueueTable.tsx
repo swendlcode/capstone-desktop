@@ -9,6 +9,7 @@ interface QueueTableProps {
   selectedIds: Set<string>;
   onSelect: (id: string, additive: boolean) => void;
   onRemove: (id: string) => void;
+  onReanalyze: (id: string) => void;
 }
 
 /** Units live up here so the cells below can be nothing but figures. */
@@ -32,7 +33,13 @@ const HEADERS: Array<{ label: string; unit?: string; right?: boolean }> = [
  * is routinely thousands of files, and a list that switches strategy at a
  * threshold is a list whose slow path is the one nobody tests.
  */
-export function QueueTable({ files, selectedIds, onSelect, onRemove }: QueueTableProps) {
+export function QueueTable({
+  files,
+  selectedIds,
+  onSelect,
+  onRemove,
+  onReanalyze,
+}: QueueTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -49,6 +56,9 @@ export function QueueTable({ files, selectedIds, onSelect, onRemove }: QueueTabl
         style={{ gridTemplateColumns: QUEUE_GRID }}
         className="grid shrink-0 items-center gap-3 border-b border-gray-700 bg-gray-900 px-4 py-2"
       >
+        {/* The cover and remove columns carry no label: a header over a 28px
+            tile is wider than the tile. */}
+        <span />
         {HEADERS.map((h) => (
           <span
             key={h.label}
@@ -83,6 +93,7 @@ export function QueueTable({ files, selectedIds, onSelect, onRemove }: QueueTabl
                   selected={selectedIds.has(file.id)}
                   onSelect={onSelect}
                   onRemove={onRemove}
+                  onReanalyze={onReanalyze}
                 />
               </div>
             );

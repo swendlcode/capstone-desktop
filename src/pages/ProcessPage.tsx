@@ -28,7 +28,7 @@ const READY: FileStatus[] = ['pending', 'analyzing', 'analyzed', 'error'];
  */
 export function ProcessPage() {
   const { data: files = [], isLoading } = useQueue();
-  const { addPaths, addViaPicker, remove, clear, start, cancel } = useQueueActions();
+  const { addPaths, addViaPicker, analyze, remove, clear, start, cancel } = useQueueActions();
 
   const isProcessing = useQueueStore((s) => s.isProcessing);
   const progress = useQueueStore((s) => s.progress);
@@ -50,6 +50,11 @@ export function ProcessPage() {
   );
 
   const handleRemove = useCallback((id: string) => remove.mutate(id), [remove]);
+
+  // Re-analyze from the row menu. Nothing is patched in here: `analyze_file`
+  // emits the row over `capstone://file-updated` twice, and the second one
+  // carries the measurements.
+  const handleReanalyze = useCallback((id: string) => analyze.mutate(id), [analyze]);
 
   // Delete removes the selection, Escape drops it. Nothing on this tab takes
   // typed input, but the listener is guarded on the target anyway so it stays
@@ -93,6 +98,7 @@ export function ProcessPage() {
             selectedIds={selectedIds}
             onSelect={handleSelect}
             onRemove={handleRemove}
+            onReanalyze={handleReanalyze}
           />
         </>
       )}

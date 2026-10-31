@@ -1,6 +1,13 @@
 export type { Analysis } from './analysis';
+export type { CoverArt } from './cover';
 export type { FileStatus, ProcessResult, QueuedFile } from './queue';
-export type { Warmth, PitchMode, BandSetting, Template } from './template';
+export type {
+  Warmth,
+  PitchMode,
+  BandSetting,
+  Template,
+  ImportedTemplate,
+} from './template';
 export type { OutputFormat, Mp3Rate, OutputLocation, Settings } from './settings';
 export type { QueueProgress, QueueFinished } from './events';
 export {

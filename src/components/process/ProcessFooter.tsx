@@ -1,5 +1,5 @@
 import { Button } from '../ui/Button';
-import { Add, FolderOpen, Play, Stop } from '../ui/icons';
+import { Add, Flash, FolderOpen, Stop } from '../ui/icons';
 import { useOpenOutputFolder } from './useOutputFolder';
 import type { QueueFinished, QueueProgress } from '../../types';
 
@@ -21,6 +21,10 @@ interface ProcessFooterProps {
  * Start turns into a progress bar with a Cancel beside it rather than opening a
  * modal: the queue is the thing the user is watching, and a dialog over it
  * hides the per-row status that says which file is being worked on.
+ *
+ * Start and Cancel are a bolt and a stop block, both solid, rather than the
+ * media triangle this button used to carry: it starts a batch job, it does not
+ * play audio, and a transport glyph promised the wrong thing.
  *
  * The bar is driven by `capstone://queue-progress` only. `start_processing`
  * returns the moment the run is spawned, so there is a gap before the first
@@ -103,7 +107,7 @@ export function ProcessFooter({
                 size="sm"
                 onClick={onStart}
                 disabled={readyCount === 0 || busy}
-                icon={<Play size={15} color="currentColor" variant="Bold" />}
+                icon={<Flash size={15} color="currentColor" variant="Bold" />}
               >
                 Start Processing
               </Button>

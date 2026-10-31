@@ -21,21 +21,58 @@
   Naming: --capstone-black and --capstone-white are the background and
   foreground brand tokens. The light theme flips their VALUES under the same
   names, which is what lets every component class stay theme-agnostic.
+
+  THE RAMP HAS TWO HALVES, and mixing them is what broke the dark theme once
+  already. 900/800/700 are PLANES — the page sits below them and each step is
+  a surface you can land an element on; they are never legible as text.
+  600/500/400/300/200/100 are INK — every one of them clears 4.5:1 on the
+  darkest plane it is used over (600 is the floor at 3:1, for hairlines,
+  status dots and 9–10px unit labels). Reaching into the plane half for text,
+  the way `text-gray-600` does for the drop-zone caption, buys 1.5:1 and an
+  invisible control. Reaching into the ink half for a fill buys a grey slab.
+
+  DISABLED IS A STEP DOWN THE INK RAMP, NOT AN OPACITY. Anything disabled
+  paints in --gray-500 (4.0:1 on a card in dark, 4.5:1 in light) and keeps its
+  full alpha. `opacity` multiplies down the tree, so a field that dimmed itself
+  at 0.5 inside a row dimmed at 0.4 rendered at an effective 0.2 — the pitch
+  card's "When off key by at least" and its cents field measured 1.38:1 in
+  dark, in the state the card ships in. Controls own their disabled look
+  (Input, Checkbox, Radio); containers dim their own label and nothing else.
+  A solid control with nothing dimmed inside it may still fade as a whole —
+  Button and the slider track do — because there is nothing there to compound
+  with.
+
+  The dark values are not a numeric mirror of the light ones. They were
+  derived separately: planes are spaced by CIE L* (≈5–7 per step, which is
+  what makes an edge read on a near-black background) and ink is solved
+  against the worst plane it actually sits on. The previous ramp mirrored the
+  light values, which put four planes inside a 1.26:1 band.
 */
 :root {
-  --capstone-black: 12 12 12;    /* #0c0c0c */
+  --capstone-black: 12 12 12;    /* #0c0c0c page */
   --capstone-sky: 63 197 242;    /* #3fc5f2 */
   --capstone-white: 247 247 247; /* #f7f7f7 */
+  /* The one hue outside the accent and the ramp, and it earns its place: a
+     failed file has to separate from a queued one at a glance, and the ramp
+     only has greys to say it with. It was four hard-coded #ff6b6b literals in
+     four components (the queue's status cell and counter, the update badge,
+     the template importer) plus Tailwind's stock red in the context menu —
+     five reds that never matched and none of which followed the light theme.
+     6.2:1 on the shell plane. */
+  --capstone-red: 255 107 107;   /* #ff6b6b error */
 
-  --gray-900: 17 17 17;          /* #111111 */
-  --gray-800: 26 26 26;          /* #1a1a1a */
-  --gray-700: 36 36 36;          /* #242424 */
-  --gray-600: 51 51 51;          /* #333333 */
-  --gray-500: 85 85 85;          /* #555555 */
-  --gray-400: 136 136 136;       /* #888888 */
-  --gray-300: 170 170 170;       /* #aaaaaa */
-  --gray-200: 204 204 204;       /* #cccccc */
-  --gray-100: 238 238 238;       /* #eeeeee */
+  /* Planes. L* 3.3 / 9.3 / 14.2 / 21.2 — see the note above. */
+  --gray-900: 26 26 26;          /* #1a1a1a shell: title bar, table head, footer, row hover */
+  --gray-800: 36 36 36;          /* #242424 cards, and the table's row rules */
+  --gray-700: 51 51 51;          /* #333333 wells, buttons, the default hairline */
+
+  /* Ink. */
+  --gray-600: 109 109 109;       /* #6d6d6d 3.0:1 on a card — hairlines, dots, unit labels */
+  --gray-500: 130 130 130;       /* #828282 4.5:1 on the shell plane */
+  --gray-400: 155 155 155;       /* #9b9b9b 4.5:1 inside a well */
+  --gray-300: 181 181 181;       /* #b5b5b5 */
+  --gray-200: 210 210 210;       /* #d2d2d2 */
+  --gray-100: 239 239 239;       /* #efefef */
 
   --color-bg: rgb(var(--capstone-black));
   --color-surface: rgb(var(--gray-800));
@@ -54,21 +91,32 @@
    `<html data-theme="light">` rather than prefers-color-scheme, so the app can
    offer the choice. `bg-gray-900` now resolves near-white and
    `text-capstone-white` near-black. The accent goes several steps darker:
-   #3fc5f2 on white is far below a readable contrast ratio. */
-[data-theme="light"] {
-  --capstone-black: 255 255 255; /* #ffffff page background */
-  --capstone-sky: 18 136 190;    /* #1288be readable cyan on white */
-  --capstone-white: 15 15 16;    /* #0f0f10 primary foreground */
+   #3fc5f2 on white is far below a readable contrast ratio.
 
-  --gray-900: 255 255 255;       /* #ffffff app shell, title bar */
-  --gray-800: 245 245 245;       /* #f5f5f5 cards, wells */
-  --gray-700: 230 230 230;       /* #e6e6e6 borders, dividers */
-  --gray-600: 208 208 208;       /* #d0d0d0 heavy borders, slider track */
-  --gray-500: 160 160 160;       /* #a0a0a0 faint icons */
-  --gray-400: 107 107 107;       /* #6b6b6b muted body text */
-  --gray-300: 77 77 77;          /* #4d4d4d secondary text */
-  --gray-200: 44 44 44;          /* #2c2c2c near-foreground */
-  --gray-100: 26 26 26;          /* #1a1a1a strongest non-fg */
+   --gray-900 must stay off pure white. It was #ffffff, the same value as
+   --capstone-black, so the title bar, the table head and the footer had no
+   plane of their own and the queue's `hover:bg-gray-900` was a literal no-op:
+   1.00:1 against the page it sits on. */
+[data-theme="light"] {
+  --capstone-black: 255 255 255; /* #ffffff page */
+  --capstone-sky: 13 112 153;    /* #0d7099 readable cyan: 5.5:1 on white */
+  --capstone-white: 15 15 16;    /* #0f0f10 primary foreground */
+  /* Much darker than the dark theme's: #ff6b6b on white is 2.3:1, which is a
+     pink hint rather than an error. */
+  --capstone-red: 189 42 30;     /* #bd2a1e 5.9:1 on white */
+
+  /* Planes. */
+  --gray-900: 247 247 247;       /* #f7f7f7 shell: title bar, table head, footer, row hover */
+  --gray-800: 240 240 240;       /* #f0f0f0 cards, and the table's row rules */
+  --gray-700: 222 222 222;       /* #dedede wells, buttons, the default hairline */
+
+  /* Ink. */
+  --gray-600: 138 138 138;       /* #8a8a8a 3.0:1 on a card */
+  --gray-500: 109 109 109;       /* #6d6d6d 4.5:1 on a card */
+  --gray-400: 98 98 98;          /* #626262 4.5:1 inside a well */
+  --gray-300: 77 77 77;          /* #4d4d4d */
+  --gray-200: 44 44 44;          /* #2c2c2c */
+  --gray-100: 26 26 26;          /* #1a1a1a */
 
   --color-bg: rgb(var(--capstone-black));
   --color-surface: rgb(var(--gray-800));
@@ -78,7 +126,7 @@
   --color-text-muted: rgb(var(--gray-400));
   --color-text-subtle: rgb(var(--gray-500));
   --color-accent: rgb(var(--capstone-sky));
-  --color-accent-hover: #0f76a6;
+  --color-accent-hover: #0a5c80;
 
   color-scheme: light;
 }
@@ -124,12 +172,22 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    /* gray-700 reads dark in the dark theme and light-grey in the light one. */
-    background: rgb(var(--gray-700));
+    /* An ink token, not a plane one: a thumb drawn in --gray-700 sat at 1.6:1
+       on the page and you could not find the scrollbar in the dark theme. */
+    background: rgb(var(--gray-600));
     border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
     background: rgb(var(--gray-500));
+  }
+
+  /* One focus ring for the whole app. Without it everything but the slider
+     fell back to the UA ring, which follows color-scheme rather than the
+     theme: a light ring in dark, a dark one in light, and neither matched the
+     accent. :focus-visible keeps it off mouse clicks. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--capstone-sky) / 0.75);
+    outline-offset: 2px;
   }
 }
 
@@ -198,7 +256,9 @@
     width: 14px;
     border-radius: 50%;
     background: rgb(var(--capstone-sky));
-    border: 2px solid var(--color-bg);
+    /* The cut-out ring is the surface the slider is actually drawn on — every
+       slider in the app sits inside a card, not on the page. */
+    border: 2px solid var(--color-surface);
     cursor: pointer;
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
   }
@@ -220,7 +280,7 @@
     width: 14px;
     border-radius: 50%;
     background: rgb(var(--capstone-sky));
-    border: 2px solid var(--color-bg);
+    border: 2px solid var(--color-surface);
     cursor: pointer;
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
   }

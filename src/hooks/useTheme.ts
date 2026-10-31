@@ -1,10 +1,18 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import { hexToTriplet, lighten } from '../theme/color';
 
 export type Theme = 'dark' | 'light';
 
 const THEME_KEY = 'capstone:theme';
 const ACCENT_KEY = 'capstone:accent';
+
+/**
+ * Capstone opens dark on a machine that has never run it. Stack is dark-first
+ * and this is its sibling, and dark is also the only theme that cannot flash
+ * on the first paint: the stylesheet's `:root` block is the dark set, so the
+ * paint that happens before this module runs is already correct for it.
+ */
+const DEFAULT_THEME: Theme = 'dark';
 
 /**
  * Theme is client-only state. The IPC `Settings` contract carries no theme or
@@ -23,6 +31,7 @@ export function applyTheme(theme: Theme, accent?: string | null) {
   } catch {
     /* private mode / quota — the DOM is already correct for this session */
   }
+  publish(theme);
 }
 
 /**
@@ -30,6 +39,10 @@ export function applyTheme(theme: Theme, accent?: string | null) {
  * overrides so the stylesheet's own Capstone cyan applies again, including the
  * light theme's darker variant — which is why this sets the triplet rather than
  * a finished colour.
+ *
+ * One override serves both themes, so a hex picked while the app is dark is
+ * the hex the light theme gets as well. That is a limit of the accent contract
+ * — there is nowhere to keep a per-theme pair — not an oversight here.
  */
 function applyAccent(accent?: string | null) {
   const el = document.documentElement;
@@ -47,9 +60,9 @@ function applyAccent(accent?: string | null) {
 
 export function readPersistedTheme(): Theme {
   try {
-    return localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark';
+    return localStorage.getItem(THEME_KEY) === 'light' ? 'light' : DEFAULT_THEME;
   } catch {
-    return 'dark';
+    return DEFAULT_THEME;
   }
 }
 
@@ -61,18 +74,47 @@ export function readPersistedAccent(): string | null {
   }
 }
 
+/*
+ * One theme for the whole app, held outside React.
+ *
+ * This used to be `useState` inside the hook, which hands every caller its own
+ * copy. The title bar's toggle repainted <html> for everyone, but any second
+ * consumer — a status bar, an onboarding step, a settings pane — went on
+ * rendering the icon and label of whichever theme the app was in when that
+ * component mounted, and nothing recovered it short of a remount. There is one
+ * consumer today; the next one is the bug.
+ */
+let current: Theme = readPersistedTheme();
+const listeners = new Set<() => void>();
+
+function publish(next: Theme) {
+  if (next === current) return;
+  current = next;
+  for (const listener of listeners) listener();
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 /** Current theme plus a toggle, for the title bar control. */
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(readPersistedTheme);
+  const theme = useSyncExternalStore(
+    subscribe,
+    () => current,
+    () => DEFAULT_THEME,
+  );
 
-  const setAndApply = useCallback((next: Theme) => {
+  const setTheme = useCallback((next: Theme) => {
     applyTheme(next, readPersistedAccent());
-    setTheme(next);
   }, []);
 
   const toggleTheme = useCallback(() => {
-    setAndApply(readPersistedTheme() === 'dark' ? 'light' : 'dark');
-  }, [setAndApply]);
+    applyTheme(current === 'dark' ? 'light' : 'dark', readPersistedAccent());
+  }, []);
 
-  return { theme, setTheme: setAndApply, toggleTheme };
+  return { theme, setTheme, toggleTheme };
 }

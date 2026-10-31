@@ -33,7 +33,7 @@ export function QueueToolbar({ files, onClear, disabled }: QueueToolbarProps) {
         )}
         {failed > 0 && (
           <span className="text-gray-500">
-            <span className="mono text-[#ff6b6b]">{failed}</span> failed
+            <span className="mono text-capstone-red">{failed}</span> failed
           </span>
         )}
       </div>

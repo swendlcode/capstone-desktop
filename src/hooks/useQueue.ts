@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { capstoneService } from '../services/capstoneService';
+import { coverArtQueryKeys } from './useCoverArt';
 import { useQueueStore } from '../stores/queueStore';
 import {
   EVENT_FILE_UPDATED,
@@ -84,6 +85,10 @@ export function useQueueActions() {
     onSuccess: () => {
       clearSelection();
       invalidate();
+      // Cover queries never go stale and never expire, which is what keeps
+      // scrolling cheap; clearing the queue is therefore the only thing that
+      // ever frees them. The backend drops its own cache in the same command.
+      queryClient.removeQueries({ queryKey: coverArtQueryKeys.all });
     },
   });
 

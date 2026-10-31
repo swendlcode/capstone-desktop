@@ -6,7 +6,9 @@ import { RepairClipsCard } from '../components/template/RepairClipsCard';
 import { WarmthCard } from '../components/template/WarmthCard';
 import { PitchCard } from '../components/template/PitchCard';
 import { MultibandEditor } from '../components/template/MultibandEditor';
+import { TemplateShare } from '../components/template/TemplateShare';
 import { useTemplateEditor } from '../components/template/useTemplateEditor';
+import { useTemplateShare } from '../components/template/useTemplateShare';
 import { useTemplates } from '../hooks/useTemplates';
 import { useUiStore } from '../stores/uiStore';
 
@@ -32,6 +34,7 @@ export function TemplatePage() {
     deleteActive,
     isDuplicating,
   } = useTemplateEditor();
+  const share = useTemplateShare();
   const multibandOpen = useUiStore((s) => s.multibandOpen);
   const openMultiband = useUiStore((s) => s.openMultiband);
   const closeMultiband = useUiStore((s) => s.closeMultiband);
@@ -47,7 +50,19 @@ export function TemplatePage() {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 p-6">
       <header className="flex flex-col gap-3">
-        <h1 className="text-lg font-bold text-capstone-white">Configure Template</h1>
+        {/* Sharing sits beside the heading rather than in the gear menu: Import
+            is not an action on the selected template, so a menu hung off that
+            template is the wrong place for it. */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-lg font-bold text-capstone-white">Configure Template</h1>
+          <TemplateShare
+            templateName={template.name}
+            busy={share.busy}
+            notice={share.notice}
+            onExport={() => share.exportActive(template.id)}
+            onImport={share.importFile}
+          />
+        </div>
         <TemplatePicker
           templates={templates}
           active={template}

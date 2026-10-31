@@ -68,8 +68,10 @@ export function NumberField({
     <Input
       // Dimmed rather than only non-interactive: a stock template disables
       // every field on the tab, and fields that look live but refuse keystrokes
-      // read as a broken window.
-      className={`mono ${disabled ? 'opacity-50' : ''} ${className}`}
+      // read as a broken window. The dimming itself belongs to `Input`, which
+      // does it with an ink token: an `opacity` here multiplied with the one a
+      // dependent `FieldRow` used to apply and buried the field at 1.38:1.
+      className={`mono ${className}`}
       type="number"
       inputMode="decimal"
       value={text}

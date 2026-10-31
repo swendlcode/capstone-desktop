@@ -37,3 +37,15 @@ export interface Template {
   pitchMode: PitchMode;
   bands: BandSetting[];
 }
+
+/**
+ * What `import_template` produced: the stored template, plus the author's
+ * one-line note if the file carried one.
+ *
+ * The note is not on `Template` because `Template` has no field for one. The
+ * importer shows it once, in the line confirming what was added.
+ */
+export interface ImportedTemplate {
+  template: Template;
+  description: string;
+}

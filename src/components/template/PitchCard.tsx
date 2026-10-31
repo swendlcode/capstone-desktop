@@ -44,7 +44,9 @@ export function PitchCard({ template, editable, setField }: Props) {
           />
         }
       />
-      <div className={`flex flex-col gap-3 ${on ? '' : 'opacity-40'}`}>
+      {/* No dimmed wrapper: each Radio dims itself, and stacking the two
+          opacities is what made this card's dependent row unreadable. */}
+      <div className="flex flex-col gap-3">
         {MODES.map((mode) => (
           <Radio
             key={mode.value}

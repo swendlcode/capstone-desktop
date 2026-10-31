@@ -123,9 +123,17 @@ pub async fn remove_from_queue(id: String, state: State<'_, AppState>) -> Result
     Ok(())
 }
 
+/// Empties the queue, and the cover-art cache with it.
+///
+/// That cache is keyed on path and deliberately unbounded, with the queue as
+/// its only ceiling (see `crate::cover`), so this is the one moment the ceiling
+/// actually comes down. Without it a user who drops a library, clears it and
+/// drops another keeps every thumbnail from the first one for the rest of the
+/// session.
 #[tauri::command]
 pub async fn clear_queue(state: State<'_, AppState>) -> Result<()> {
     state.queue.lock().clear();
+    crate::cover::clear_cache();
     Ok(())
 }
 
@@ -166,7 +174,7 @@ mod tests {
     fn a_dropped_folder_stamps_its_root_on_every_file_it_held() {
         let root = tree();
         let dropped = root.to_string_lossy().to_string();
-        let found = expand(&[dropped.clone()]);
+        let found = expand(std::slice::from_ref(&dropped));
         assert!(found.iter().all(|(_, r)| r.as_deref() == Some(root.as_path())));
     }
 

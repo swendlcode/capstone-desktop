@@ -17,7 +17,7 @@ const VARIANTS: Record<Variant, string> = {
   primary: 'bg-capstone-sky text-capstone-black hover:bg-[color:var(--color-accent-hover)]',
   secondary: 'bg-gray-700 text-capstone-white hover:bg-gray-600',
   ghost: 'bg-transparent text-gray-300 hover:bg-gray-700 hover:text-capstone-white',
-  danger: 'bg-capstone-sky/70 text-capstone-white hover:bg-capstone-sky/90',
+  danger: 'bg-capstone-red text-capstone-black hover:bg-capstone-red/85',
 };
 
 const SIZES: Record<Size, string> = {

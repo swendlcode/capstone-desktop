@@ -9,6 +9,7 @@
 
 pub mod audio;
 pub mod commands;
+pub mod cover;
 pub mod error;
 pub mod jobs;
 pub mod models;
@@ -52,8 +53,11 @@ pub fn run() {
             commands::template_commands::save_template,
             commands::template_commands::duplicate_template,
             commands::template_commands::delete_template,
+            commands::template_commands::export_template,
+            commands::template_commands::import_template,
             commands::settings_commands::get_settings,
             commands::settings_commands::update_settings,
+            commands::cover_commands::get_cover_art,
             commands::dialog_commands::open_output_folder,
             commands::dialog_commands::pick_files,
             commands::dialog_commands::pick_folder,
