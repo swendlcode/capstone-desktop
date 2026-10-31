@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      # One platform failing should still publish the other: a broken Windows
+      # runner must not hold back a working macOS DMG.
+      fail-fast: false
+      matrix:
+        include:
+          # Universal binary so the DMG runs on both Apple Silicon and Intel
+          # Macs. GitHub's macOS runners are arm64 only, so x86_64 is
+          # cross-compiled and both targets have to be installed.
+          - os: macos-latest
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+            args: --target universal-apple-darwin
+          - os: windows-latest
+            rust-targets: ''
+            args: ''
+
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Cargo.toml pins rust-version = "1.87", so a toolchain older than that
+      # fails with one clear cargo message rather than type errors inside a
+      # dependency.
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      # The tag is the only place a version number is edited. Both files are
+      # written from it here, so a release can never ship a binary whose
+      # about-box disagrees with its own filename.
+      - name: Set version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          jq --arg v "$VERSION" '.version = $v' src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
+          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json && mv tmp.json package.json
+          sed -i.bak "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml && rm -f src-tauri/Cargo.toml.bak
+
+      # The release notes are the changelog entry for this version, so the page
+      # a user lands on and the notes shown in the app are the same text. An
+      # unknown version falls back to its own number rather than failing the
+      # build.
+      - name: Build release notes from changelog
+        id: notes
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          {
+            echo 'body<<CHANGELOG_EOF'
+            jq -r --arg v "$VERSION" '
+              .[$v] as $r
+              | if $r == null
+                then "Release " + $v
+                else "### " + $r.title + "\n\n" + $r.summary + "\n\n"
+                     + ($r.highlights | map("- " + .) | join("\n"))
+                end
+            ' src/data/changelog.json
+            echo 'CHANGELOG_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Build and upload to release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the update artifacts and emits latest.json, which an in-app
+          # updater reads from the latest release. Both are repository secrets
+          # and are referenced by name only — there are no values to put here.
+          #
+          # Until the keypair exists AND bundle.createUpdaterArtifacts is set in
+          # tauri.conf.json, this step still succeeds and simply publishes no
+          # update manifest, so builds from before then cannot self-update.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Capstone ${{ github.ref_name }}
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
+          includeUpdaterJson: true

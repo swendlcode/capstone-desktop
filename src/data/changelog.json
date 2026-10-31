@@ -1,0 +1,15 @@
+{
+  "0.1.0": {
+    "date": "2026-10-31",
+    "title": "First release",
+    "summary": "Drop in a folder of finished tracks and get them back at one consistent volume, with clipped peaks repaired and the tags still on them.",
+    "highlights": [
+      "Everything you process lands on the same loudness target, with a true-peak limiter so nothing distorts on the way there.",
+      "Clipped peaks are repaired before anything else touches the file.",
+      "Tracks sitting off concert pitch can be corrected, keeping the tempo or moving it with the pitch.",
+      "Optional warmth and multiband dynamics, saved into named templates you reuse.",
+      "Reads the formats a library is actually made of, writes AIFF, WAV, FLAC, ALAC or MP3, and carries your tags across.",
+      "Your originals are never touched: processed files are written somewhere new."
+    ]
+  }
+}

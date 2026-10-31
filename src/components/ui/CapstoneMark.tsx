@@ -1,0 +1,34 @@
+interface CapstoneMarkProps {
+  /** Rendered height in px; the width follows the mark's 132:101 ratio. */
+  size?: number;
+  className?: string;
+}
+
+/**
+ * Capstone's own mark, inlined rather than loaded from
+ * src/assets/logo/capstone-icon.svg so it inherits `currentColor` and follows
+ * the theme instead of staying brand-cyan on a white title bar.
+ */
+export function CapstoneMark({ size = 20, className = '' }: CapstoneMarkProps) {
+  return (
+    <svg
+      height={size}
+      width={size * (132 / 101)}
+      viewBox="0 0 132 101"
+      fill="none"
+      role="img"
+      aria-label="Capstone"
+      className={className}
+    >
+      <path
+        d="M102.896 36.5386C83.3457 36.5386 67.4967 52.3876 67.4967 71.9382V100.952H85.1045V71.9382C85.1045 70.3072 85.324 68.7275 85.735 67.227L112.79 94.2819L125.241 81.8313L98.1859 54.7767C99.6862 54.3658 101.266 54.1465 102.896 54.1465H131.91V36.5386H102.896Z"
+        fill="currentColor"
+      />
+      <path
+        d="M29.0135 36.5386C48.5641 36.5386 64.4131 52.3876 64.4131 71.9382V100.952H46.8053V71.9382C46.8053 69.8562 46.4476 67.8576 45.7904 66.0007L19.927 91.8641L7.4764 79.4135L32.4181 54.4719C31.3161 54.2583 30.1779 54.1465 29.0135 54.1465H0V36.5386H29.0135Z"
+        fill="currentColor"
+      />
+      <rect x="46.9547" width="37.5634" height="37.5634" rx="18.7817" fill="currentColor" />
+    </svg>
+  );
+}

@@ -1,0 +1,257 @@
+/* Syne (headings/labels) + DM Mono (dB, cents, %, paths) — @import must
+   precede every other rule in the file or the browser drops it. */
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400..800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Capstone theme tokens.
+
+  Tokens are space-separated RGB triplets (no rgb() wrapper, no commas) so
+  Tailwind's palette can compose them with `<alpha-value>` — `bg-capstone-sky/10`
+  resolves to `rgb(var(--capstone-sky) / 0.1)`. That format is the only one in
+  which opacity modifiers work against a CSS variable; wrapping the value in
+  rgb() here silently breaks every `/NN` class in the app.
+
+  Direct CSS consumers (body, .badge, the slider) either wrap the triplet
+  themselves or use the semantic --color-* vars, which already include rgb().
+
+  Naming: --capstone-black and --capstone-white are the background and
+  foreground brand tokens. The light theme flips their VALUES under the same
+  names, which is what lets every component class stay theme-agnostic.
+*/
+:root {
+  --capstone-black: 12 12 12;    /* #0c0c0c */
+  --capstone-sky: 63 197 242;    /* #3fc5f2 */
+  --capstone-white: 247 247 247; /* #f7f7f7 */
+
+  --gray-900: 17 17 17;          /* #111111 */
+  --gray-800: 26 26 26;          /* #1a1a1a */
+  --gray-700: 36 36 36;          /* #242424 */
+  --gray-600: 51 51 51;          /* #333333 */
+  --gray-500: 85 85 85;          /* #555555 */
+  --gray-400: 136 136 136;       /* #888888 */
+  --gray-300: 170 170 170;       /* #aaaaaa */
+  --gray-200: 204 204 204;       /* #cccccc */
+  --gray-100: 238 238 238;       /* #eeeeee */
+
+  --color-bg: rgb(var(--capstone-black));
+  --color-surface: rgb(var(--gray-800));
+  --color-surface-alt: rgb(var(--gray-700));
+  --color-border: rgb(var(--gray-600));
+  --color-text: rgb(var(--capstone-white));
+  --color-text-muted: rgb(var(--gray-400));
+  --color-text-subtle: rgb(var(--gray-500));
+  --color-accent: rgb(var(--capstone-sky));
+  --color-accent-hover: #62cff4;
+
+  color-scheme: dark;
+}
+
+/* Light theme — a value flip under the same names, selected by
+   `<html data-theme="light">` rather than prefers-color-scheme, so the app can
+   offer the choice. `bg-gray-900` now resolves near-white and
+   `text-capstone-white` near-black. The accent goes several steps darker:
+   #3fc5f2 on white is far below a readable contrast ratio. */
+[data-theme="light"] {
+  --capstone-black: 255 255 255; /* #ffffff page background */
+  --capstone-sky: 18 136 190;    /* #1288be readable cyan on white */
+  --capstone-white: 15 15 16;    /* #0f0f10 primary foreground */
+
+  --gray-900: 255 255 255;       /* #ffffff app shell, title bar */
+  --gray-800: 245 245 245;       /* #f5f5f5 cards, wells */
+  --gray-700: 230 230 230;       /* #e6e6e6 borders, dividers */
+  --gray-600: 208 208 208;       /* #d0d0d0 heavy borders, slider track */
+  --gray-500: 160 160 160;       /* #a0a0a0 faint icons */
+  --gray-400: 107 107 107;       /* #6b6b6b muted body text */
+  --gray-300: 77 77 77;          /* #4d4d4d secondary text */
+  --gray-200: 44 44 44;          /* #2c2c2c near-foreground */
+  --gray-100: 26 26 26;          /* #1a1a1a strongest non-fg */
+
+  --color-bg: rgb(var(--capstone-black));
+  --color-surface: rgb(var(--gray-800));
+  --color-surface-alt: rgb(var(--gray-700));
+  --color-border: rgb(var(--gray-600));
+  --color-text: rgb(var(--capstone-white));
+  --color-text-muted: rgb(var(--gray-400));
+  --color-text-subtle: rgb(var(--gray-500));
+  --color-accent: rgb(var(--capstone-sky));
+  --color-accent-hover: #0f76a6;
+
+  color-scheme: light;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: 'Syne', system-ui, sans-serif;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    /* A file-in/file-out tool has no prose to select, and stray text selection
+       while dragging across the queue table looks like a bug. Inputs opt back
+       in below. */
+    user-select: none;
+    overflow: hidden;
+  }
+
+  input,
+  textarea {
+    user-select: text;
+    font-family: 'Syne', system-ui, sans-serif;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    /* gray-700 reads dark in the dark theme and light-grey in the light one. */
+    background: rgb(var(--gray-700));
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--gray-500));
+  }
+}
+
+@layer components {
+  /* Every number, percentage, dB figure and file path wears this. */
+  .mono {
+    font-family: 'DM Mono', ui-monospace, monospace;
+  }
+
+  .surface {
+    background: var(--color-surface);
+  }
+
+  .border-subtle {
+    border-color: var(--color-border);
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: 'DM Mono', ui-monospace, monospace;
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  /* Range input whose filled portion is driven by an inline `--slider-pct`,
+     set by whatever renders it. Used for limiter character, thresholds and
+     the multiband band controls. */
+  .capstone-slider {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    height: 16px;
+    border-radius: 2px;
+    background: transparent;
+    outline: none;
+    cursor: pointer;
+    touch-action: pan-y;
+  }
+
+  .capstone-slider:focus-visible {
+    outline: 2px solid rgb(var(--capstone-sky) / 0.7);
+    outline-offset: 2px;
+  }
+
+  .capstone-slider::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      rgb(var(--capstone-sky)) 0%,
+      rgb(var(--capstone-sky)) var(--slider-pct, 0%),
+      rgb(var(--gray-600)) var(--slider-pct, 0%),
+      rgb(var(--gray-600)) 100%
+    );
+  }
+
+  .capstone-slider::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    margin-top: -5px; /* centres a 14px thumb on a 4px track */
+    height: 14px;
+    width: 14px;
+    border-radius: 50%;
+    background: rgb(var(--capstone-sky));
+    border: 2px solid var(--color-bg);
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
+  }
+
+  .capstone-slider::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: rgb(var(--gray-600));
+  }
+
+  .capstone-slider::-moz-range-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: rgb(var(--capstone-sky));
+  }
+
+  .capstone-slider::-moz-range-thumb {
+    height: 14px;
+    width: 14px;
+    border-radius: 50%;
+    background: rgb(var(--capstone-sky));
+    border: 2px solid var(--color-bg);
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
+  }
+
+  .capstone-slider::-moz-focus-outer {
+    border: 0;
+  }
+}
+
+@layer utilities {
+  /* The window uses the macOS Overlay title bar, so the title bar component
+     has to declare its own drag surface and exempt the controls on it. */
+  .drag-region {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+
+  .h-app {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
