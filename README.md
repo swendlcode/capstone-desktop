@@ -5,8 +5,6 @@
 ![React](https://img.shields.io/badge/Frontend-React_18-61DAFB)
 ![Rust](https://img.shields.io/badge/Backend-Rust-000000)
 
-<!-- Screenshot placeholder: export the Process Audio Files tab at 2400x1640
-     and save it as docs/screenshot.png. -->
 ![Capstone](docs/screenshot.png)
 
 **Your library, at one volume.** Drop in a folder of finished tracks and Capstone
@@ -38,6 +36,18 @@ in a batch, offline, while you do something else.
   nothing comes back needing to be identified by ear.
 - **Never overwrites.** Processed files are written somewhere new. Your originals
   are untouched.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Process, dark](docs/screenshots/process-dark.png) | ![Process, light](docs/screenshots/process-light.png) |
+| The queue, mid-library. Cover art, clip count, dynamics, loudness and tuning per track. | The same thing in the light theme. |
+
+![Configure Template](docs/screenshots/template-dark.png)
+
+A template is the settings. The stock ones are read-only; duplicate one to change
+anything, and export it as a file if you want to hand it to someone.
 
 ## Install
 
@@ -90,3 +100,4 @@ Issues and pull requests are welcome. If you are going to work on the audio
 engine, read the project context file in the repository root first: it explains
 why the processing stages run in the order they do, which is the part that is easy
 to get wrong.
+
