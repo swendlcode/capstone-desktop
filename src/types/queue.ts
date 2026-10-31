@@ -29,4 +29,10 @@ export interface QueuedFile {
   /** Null until the file has been written out. */
   result: ProcessResult | null;
   error: string | null;
+  /**
+   * The folder this file was dropped in, or null when it was picked
+   * individually. Only "Mirror structure of input folders" reads it — it is
+   * what tells the backend how much of the path below the drop to reproduce.
+   */
+  sourceRoot: string | null;
 }

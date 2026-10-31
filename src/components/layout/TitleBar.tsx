@@ -1,6 +1,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { CapstoneMark, Moon, Sun } from '../ui/icons';
 import { useTheme } from '../../hooks/useTheme';
+import { UpdateBadge } from './UpdateBadge';
 import { TabBar } from './TabBar';
 
 export function TitleBar() {
@@ -34,7 +35,10 @@ export function TitleBar() {
         </div>
       </div>
 
-      <div className="pointer-events-none z-10 flex items-center justify-end">
+      <div className="pointer-events-none z-10 flex items-center justify-end gap-2">
+        <div className="no-drag pointer-events-auto">
+          <UpdateBadge />
+        </div>
         <button
           onClick={toggleTheme}
           className="no-drag pointer-events-auto flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800 hover:text-capstone-white"

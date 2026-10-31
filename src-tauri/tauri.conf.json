@@ -56,6 +56,18 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJDREM5MTgzRUMxRTFFQjUKUldTMUhoN3NnNUhjdkZOUHU4NkNCOVUwa2gxQmVaR0MyTHVVc3NsLzI5L1BIOXFTYnUyYXlkL3UK",
+      "endpoints": [
+        "https://github.com/swendlcode/capstone-desktop/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

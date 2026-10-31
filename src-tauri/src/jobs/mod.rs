@@ -4,7 +4,7 @@
 pub mod analysis;
 pub mod output;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rayon::prelude::*;
@@ -228,7 +228,11 @@ fn process_one(
     let mut audio = crate::audio::decode::decode_to_f32(&source)?;
     let mut result = crate::audio::process::process(&mut audio, template)?;
 
-    let dest = output::output_path(&source, settings)?;
+    let dest = output::output_path(
+        &source,
+        file.source_root.as_deref().map(Path::new),
+        settings,
+    )?;
     let spec = EncodeSpec {
         // No resampling: the file keeps the rate it arrived at. The format
         // labels in the UI name the common case, not a conversion.

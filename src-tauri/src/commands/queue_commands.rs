@@ -33,7 +33,7 @@ pub async fn add_paths(
         let found = expand(&paths);
         let mut queue = queue.lock();
         let mut added = Vec::new();
-        for path in found {
+        for (path, source_root) in found {
             let path_string = path.to_string_lossy().to_string();
             // The same file dropped twice is one row. Matching on the path and
             // not on content is the right call for a file-in/file-out tool:
@@ -52,6 +52,7 @@ pub async fn add_paths(
                 status: FileStatus::Pending,
                 result: None,
                 error: None,
+                source_root: source_root.map(|r| r.to_string_lossy().to_string()),
             };
             queue.push(file.clone());
             added.push(file);
@@ -70,7 +71,7 @@ pub async fn add_paths(
 /// Sorting matters more than it looks: without it the table's order follows
 /// whatever the filesystem happened to hand back, which differs between runs
 /// on the same folder.
-fn expand(paths: &[String]) -> Vec<PathBuf> {
+fn expand(paths: &[String]) -> Vec<(PathBuf, Option<PathBuf>)> {
     let mut found = Vec::new();
     for raw in paths {
         let path = Path::new(raw);
@@ -82,15 +83,16 @@ fn expand(paths: &[String]) -> Vec<PathBuf> {
                 .filter_map(|e| e.ok())
             {
                 if entry.file_type().is_file() && decode::is_audio_file(entry.path()) {
-                    found.push(entry.into_path());
+                    found.push((entry.into_path(), Some(path.to_path_buf())));
                 }
             }
         } else if path.is_file() && decode::is_audio_file(path) {
-            found.push(path.to_path_buf());
+            // Picked individually, so there is no tree to mirror.
+            found.push((path.to_path_buf(), None));
         }
     }
     found.sort();
-    found.dedup();
+    found.dedup_by(|a, b| a.0 == b.0);
     found
 }
 
@@ -149,7 +151,7 @@ mod tests {
         let found = expand(&[root.to_string_lossy().to_string()]);
         let names: Vec<String> = found
             .iter()
-            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().to_string())
             .collect();
 
         assert!(names.contains(&"a.aiff".to_string()));
@@ -158,6 +160,23 @@ mod tests {
         assert!(!names.contains(&"notes.txt".to_string()));
         assert!(!names.contains(&"cover.jpg".to_string()));
         assert_eq!(found.len(), 3);
+    }
+
+    #[test]
+    fn a_dropped_folder_stamps_its_root_on_every_file_it_held() {
+        let root = tree();
+        let dropped = root.to_string_lossy().to_string();
+        let found = expand(&[dropped.clone()]);
+        assert!(found.iter().all(|(_, r)| r.as_deref() == Some(root.as_path())));
+    }
+
+    #[test]
+    fn an_individually_picked_file_carries_no_root() {
+        let root = tree();
+        let one = root.join("b.wav").to_string_lossy().to_string();
+        let found = expand(&[one]);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].1.is_none());
     }
 
     /// Without the sort the table's order follows whatever the filesystem

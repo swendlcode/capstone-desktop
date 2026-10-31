@@ -42,12 +42,19 @@ pub fn bit_depth_for(format: OutputFormat) -> u16 {
 
 /// Resolves the destination for one source file.
 ///
-/// Mirroring reproduces the source's immediate parent folder under the output
-/// directory, not the whole tree from whatever folder was dropped: `QueuedFile`
-/// carries no record of which folder a file arrived in, so one level is all
-/// that can honestly be reconstructed here. Deepening this means carrying a
-/// drop root on the queue row, which is an IPC contract change.
-pub fn output_path(source: &Path, settings: &Settings) -> Result<PathBuf> {
+/// Mirroring reproduces the source's path *relative to the folder the user
+/// dropped*, which is what "Mirror structure of input folders" promises. The
+/// drop root rides on the queue row for exactly this reason; an earlier version
+/// had only the file path and could reproduce one level, which silently
+/// flattened a nested crate into a single folder.
+///
+/// `source_root` is `None` for an individually picked file. There is no tree to
+/// mirror in that case, so the file lands directly in the output folder.
+pub fn output_path(
+    source: &Path,
+    source_root: Option<&Path>,
+    settings: &Settings,
+) -> Result<PathBuf> {
     let stem = source
         .file_stem()
         .ok_or_else(|| CapstoneError::Other(format!("{} has no filename", source.display())))?;
@@ -61,8 +68,19 @@ pub fn output_path(source: &Path, settings: &Settings) -> Result<PathBuf> {
     };
 
     if settings.mirror_input_structure && settings.output_location == OutputLocation::Specific {
-        if let Some(parent_name) = source.parent().and_then(|p| p.file_name()) {
-            dir = dir.join(parent_name);
+        // The dropped folder's own name is kept, so dropping two crates with a
+        // "Bass" subfolder each does not merge them.
+        if let Some(root) = source_root {
+            if let Ok(relative) = source.strip_prefix(root) {
+                if let Some(sub) = relative.parent().filter(|p| !p.as_os_str().is_empty()) {
+                    dir = match root.file_name() {
+                        Some(root_name) => dir.join(root_name).join(sub),
+                        None => dir.join(sub),
+                    };
+                } else if let Some(root_name) = root.file_name() {
+                    dir = dir.join(root_name);
+                }
+            }
         }
     }
 
@@ -146,7 +164,7 @@ mod tests {
     fn writes_into_the_chosen_folder_with_the_format_extension() {
         let mut s = settings(OutputLocation::Specific, Some("/out"), false);
         s.format = OutputFormat::Flac;
-        let dest = output_path(Path::new("/music/crate/track.aiff"), &s).unwrap();
+        let dest = output_path(Path::new("/music/crate/track.aiff"), None, &s).unwrap();
         assert_eq!(dest, PathBuf::from("/out/track.flac"));
     }
 
@@ -154,7 +172,7 @@ mod tests {
     fn alac_lands_in_a_caf_container() {
         let mut s = settings(OutputLocation::Specific, Some("/out"), false);
         s.format = OutputFormat::Alac;
-        let dest = output_path(Path::new("/music/track.wav"), &s).unwrap();
+        let dest = output_path(Path::new("/music/track.wav"), None, &s).unwrap();
         assert_eq!(dest, PathBuf::from("/out/track.caf"));
     }
 
@@ -162,15 +180,60 @@ mod tests {
     fn same_as_source_writes_beside_the_original() {
         let mut s = settings(OutputLocation::SameAsSource, Some("/out"), false);
         s.format = OutputFormat::Flac;
-        let dest = output_path(Path::new("/music/crate/track.wav"), &s).unwrap();
+        let dest = output_path(Path::new("/music/crate/track.wav"), None, &s).unwrap();
         assert_eq!(dest, PathBuf::from("/music/crate/track.flac"));
     }
 
     #[test]
-    fn mirroring_reproduces_the_source_folder_name() {
+    fn mirroring_reproduces_the_whole_tree_below_the_dropped_folder() {
         let s = settings(OutputLocation::Specific, Some("/out"), true);
-        let dest = output_path(Path::new("/music/Tech House/track.aiff"), &s).unwrap();
+        let dest = output_path(
+            Path::new("/music/Tech House/Bass/Deep/track.aiff"),
+            Some(Path::new("/music/Tech House")),
+            &s,
+        )
+        .unwrap();
+        assert_eq!(dest, PathBuf::from("/out/Tech House/Bass/Deep/track.wav"));
+    }
+
+    #[test]
+    fn mirroring_keeps_the_dropped_folders_own_name() {
+        // Two crates each with a Bass subfolder must not merge into one.
+        let s = settings(OutputLocation::Specific, Some("/out"), true);
+        let a = output_path(
+            Path::new("/music/Crate A/Bass/t.wav"),
+            Some(Path::new("/music/Crate A")),
+            &s,
+        )
+        .unwrap();
+        let b = output_path(
+            Path::new("/music/Crate B/Bass/t.wav"),
+            Some(Path::new("/music/Crate B")),
+            &s,
+        )
+        .unwrap();
+        assert_eq!(a, PathBuf::from("/out/Crate A/Bass/t.wav"));
+        assert_eq!(b, PathBuf::from("/out/Crate B/Bass/t.wav"));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn mirroring_a_file_at_the_dropped_root_keeps_only_that_folder() {
+        let s = settings(OutputLocation::Specific, Some("/out"), true);
+        let dest = output_path(
+            Path::new("/music/Tech House/track.aiff"),
+            Some(Path::new("/music/Tech House")),
+            &s,
+        )
+        .unwrap();
         assert_eq!(dest, PathBuf::from("/out/Tech House/track.wav"));
+    }
+
+    #[test]
+    fn an_individually_picked_file_has_no_tree_to_mirror() {
+        let s = settings(OutputLocation::Specific, Some("/out"), true);
+        let dest = output_path(Path::new("/music/Tech House/track.aiff"), None, &s).unwrap();
+        assert_eq!(dest, PathBuf::from("/out/track.wav"));
     }
 
     /// Mirroring has no meaning without a folder to mirror into, and silently
@@ -179,7 +242,7 @@ mod tests {
     fn mirroring_is_ignored_when_writing_beside_the_source() {
         let mut s = settings(OutputLocation::SameAsSource, Some("/out"), true);
         s.format = OutputFormat::Flac;
-        let dest = output_path(Path::new("/music/crate/track.wav"), &s).unwrap();
+        let dest = output_path(Path::new("/music/crate/track.wav"), None, &s).unwrap();
         assert_eq!(dest, PathBuf::from("/music/crate/track.flac"));
     }
 
@@ -188,7 +251,7 @@ mod tests {
     fn never_writes_over_the_file_it_is_reading() {
         let s = settings(OutputLocation::SameAsSource, None, false);
         let source = Path::new("/music/crate/track.wav");
-        let dest = output_path(source, &s).unwrap();
+        let dest = output_path(source, None, &s).unwrap();
         assert_ne!(dest, source);
         assert_eq!(dest, PathBuf::from("/music/crate/track-capstone.wav"));
     }
@@ -196,7 +259,7 @@ mod tests {
     #[test]
     fn an_unset_output_dir_falls_back_rather_than_failing() {
         let s = settings(OutputLocation::Specific, None, false);
-        let dest = output_path(Path::new("/music/track.aiff"), &s).unwrap();
+        let dest = output_path(Path::new("/music/track.aiff"), None, &s).unwrap();
         assert_eq!(dest, default_output_dir().join("track.wav"));
 
         // An empty string is the same as unset: it is what a cleared text field

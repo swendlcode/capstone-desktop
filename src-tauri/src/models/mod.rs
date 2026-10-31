@@ -51,6 +51,13 @@ pub struct QueuedFile {
     pub status: FileStatus,
     pub result: Option<ProcessResult>,
     pub error: Option<String>,
+    /// The folder this file was dropped in, when it arrived as part of one.
+    ///
+    /// `None` for a file picked individually. Mirroring needs it: without a
+    /// record of what the user actually dropped there is no way to know how
+    /// much of the path below it to reproduce, and reproducing only the
+    /// immediate parent quietly flattens a nested crate.
+    pub source_root: Option<String>,
 }
 
 /// What processing actually did, which is not the same as what was asked for:

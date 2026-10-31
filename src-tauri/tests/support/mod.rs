@@ -59,7 +59,7 @@ pub fn pipeline(source: &Path, template: &Template, settings: &Settings) -> Run 
     let mut result = process::process(&mut audio, template)
         .unwrap_or_else(|e| panic!("processing {} failed: {e}", source.display()));
 
-    let dest = output::output_path(source, settings).expect("output path");
+    let dest = output::output_path(source, None, settings).expect("output path");
     let spec = encode::EncodeSpec {
         // No resampling: the file keeps the rate it arrived at, which is what
         // `jobs::process_one` asks for.
@@ -94,7 +94,7 @@ pub fn try_pipeline(
 ) -> Result<Run, String> {
     let (mut audio, tags) = decode::decode_with_tags(source).map_err(|e| e.to_string())?;
     let mut result = process::process(&mut audio, template).map_err(|e| e.to_string())?;
-    let dest = output::output_path(source, settings).map_err(|e| e.to_string())?;
+    let dest = output::output_path(source, None, settings).map_err(|e| e.to_string())?;
     let spec = encode::EncodeSpec {
         sample_rate: audio.sample_rate,
         channels: audio.channel_count(),
