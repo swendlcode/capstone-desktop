@@ -44,10 +44,17 @@ jobs:
         with:
           targets: ${{ matrix.rust-targets }}
 
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
+      # No cache on a release build, deliberately.
+      #
+      # A cached `target/` outlives the dependency set that produced it. In
+      # the sibling app that meant the Windows bundler looking for a DLL from
+      # a dependency that had since been removed, and failing on a file no
+      # longer part of the project — while macOS built clean, so the release
+      # published half of itself.
+      #
+      # A release is the one build that has to be reproducible from nothing:
+      # it is cut rarely, and it is the artifact strangers run. Pull request
+      # CI can keep its cache.
 
       # The tag is the only place a version number is edited. Both files are
       # written from it here, so a release can never ship a binary whose
