@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "mcp:sidecar": "node scripts/mcp-sidecar.mjs",
+    "bundle": "node scripts/mcp-sidecar.mjs --release && tauri build --config src-tauri/tauri.mcp.conf.json"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.56.0",

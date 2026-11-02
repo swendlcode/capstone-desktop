@@ -45,3 +45,6 @@ vite.config.d.ts
 *.njsproj
 *.sln
 *.sw?
+
+# The MCP sidecar, built by scripts/mcp-sidecar.mjs for a bundle.
+src-tauri/binaries/

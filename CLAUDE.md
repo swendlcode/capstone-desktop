@@ -843,6 +843,35 @@ than "the app is not running", which is the worse of the two lies.
   path-based dedupe, same stable order.
 - The bridge binds `127.0.0.1` on port 9872 (Stack 9870, Keystone 9871) and
   still requires a bearer token from `<data>/mcp_bridge.json` at 0600.
+### Shipping it: the sidecar
+
+The binary rides in the installers as a Tauri sidecar, landing at
+`Capstone.app/Contents/MacOS/capstone-mcp` (beside `capstone.exe` on Windows),
+which is the path a user registers.
+
+**`externalBin` is NOT in `tauri.conf.json`, and must not be put there.** The
+*build script* resolves it, not the bundler, so a config carrying it makes the
+sidecar a prerequisite of compiling the crate at all — which is circular,
+because `cargo build --bin capstone-mcp` is how the sidecar gets built, and
+the failure hits `tauri dev` as hard as `tauri build`:
+
+```
+error: failed to run custom build command for `capstone`
+  resource path `binaries/capstone-mcp-aarch64-apple-darwin` doesn't exist
+```
+
+So it lives in `src-tauri/tauri.mcp.conf.json`, merged in at bundle time with
+`--config`. The dev loop is untouched and pays nothing.
+
+- `scripts/mcp-sidecar.mjs` builds and names it as Tauri expects
+  (`-$TARGET_TRIPLE`, plus `.exe` on Windows). Node rather than bash so the
+  Windows runner behaves the same.
+- **A universal macOS build asks for `capstone-mcp-universal-apple-darwin`**
+  and nothing produces that but `lipo`, so a macOS release writes all three
+  names — both architectures and the merged one.
+- `npm run bundle` does both halves locally. `src-tauri/binaries/` is
+  generated and gitignored.
+
 - **Nothing but protocol may touch stdout** in the binary; `tracing` goes to
   stderr. A stray `println!` corrupts the stream and the client drops the
   connection with no useful error.
