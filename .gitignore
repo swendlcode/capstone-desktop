@@ -46,5 +46,3 @@ vite.config.d.ts
 *.sln
 *.sw?
 
-# The MCP sidecar, built by scripts/mcp-sidecar.mjs for a bundle.
-src-tauri/binaries/

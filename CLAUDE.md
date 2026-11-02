@@ -88,9 +88,6 @@ src/                      React frontend
   theme/                  color.ts — hex → RGB triplet helpers for the accent
   data/changelog.json     Release notes, keyed by version
 
-scripts/
-  mcp-sidecar.mjs         Builds capstone-mcp into src-tauri/binaries/ for a bundle
-
 src-tauri/
   Cargo.toml              Dev profile is optimised on purpose; `mp3` is a feature
   tauri.conf.json         Window chrome, asset protocol, bundle targets
@@ -876,38 +873,29 @@ one numeric field that is an integer in the model, so 999 failed
 deserialization with `expected u8` while every other numeric field clamped —
 inconsistent with the one contract the tool states.
 
-### Shipping it: the sidecar
+### Shipping it: nothing to do
 
-The binary rides in the installers as a Tauri sidecar, landing at
-`Capstone.app/Contents/MacOS/capstone-mcp` (beside `capstone.exe` on Windows),
-which is the path a user registers.
+`capstone-mcp` rides in the installers because **tauri-cli ships every
+`[[bin]]` in the crate** (2.12 onward), including lipo-ing the extra ones for
+a universal macOS build. It lands at
+`Capstone.app/Contents/MacOS/capstone-mcp`, beside `capstone.exe` on Windows.
 
-**`externalBin` is NOT in `tauri.conf.json`, and must not be put there.** The
-*build script* resolves it, not the bundler, so a config carrying it makes the
-sidecar a prerequisite of compiling the crate at all — which is circular,
-because `cargo build --bin capstone-mcp` is how the sidecar gets built, and
-the failure hits `tauri dev` as hard as `tauri build`:
+One thing *is* needed, and only for a universal macOS build: Tauri lipos the
+**main** binary into `target/universal-apple-darwin/<profile>/` and then copies
+every crate bin from there without lipo-ing the extra ones, so
+`scripts/universal-mcp-bin.mjs` merges `capstone-mcp` into that directory from
+a release-workflow step. It is a no-op on Windows.
+
+**Do not add it to `externalBin`.** Declaring a crate bin as a sidecar
+installs the same file twice and the Windows installer fails on it:
 
 ```
-error: failed to run custom build command for `capstone`
-  resource path `binaries/capstone-mcp-aarch64-apple-darwin` doesn't exist
+error LGHT0204 : ICE30: The target file 'capstone-mcp.exe' is installed ...
+by two different components: 'capstone_mcp.exe' and 'capstone_mcp'
 ```
 
-So it lives in `src-tauri/tauri.mcp.conf.json`, merged in at bundle time with
-`--config`. The dev loop is untouched and pays nothing.
-
-- `scripts/mcp-sidecar.mjs` builds and names it as Tauri expects
-  (`-$TARGET_TRIPLE`, plus `.exe` on Windows). Node rather than bash so the
-  Windows runner behaves the same.
-- **A universal macOS build asks for `capstone-mcp-universal-apple-darwin`**
-  and nothing produces that but `lipo`, so a macOS release writes all three
-  names — both architectures and the merged one.
-- `npm run bundle` does both halves locally. `src-tauri/binaries/` is
-  generated and gitignored.
-
-- **Nothing but protocol may touch stdout** in the binary; `tracing` goes to
-  stderr. A stray `println!` corrupts the stream and the client drops the
-  connection with no useful error.
+That is tauri-apps/tauri#14681. `default-run = "capstone"` is still needed —
+two bins make a bare `cargo run` ambiguous, and `tauri dev` runs exactly that.
 
 ## Known stubs / TODO
 

@@ -1,5 +1,5 @@
 {
-  "0.2.2": {
+  "0.2.3": {
     "date": "2026-11-02",
     "title": "An AI assistant can drive it, and a bad edit no longer resets a template",
     "summary": "Capstone's templates, settings and queue can be driven by an AI assistant, and an edit it cannot apply is now refused instead of quietly reverting your other settings.",
