@@ -1,5 +1,10 @@
 # Capstone — Project Context
 
+> `AGENTS.md` is a symlink to this file. Agents that look for either name read
+> the same thing, so the two cannot drift. On a Windows checkout without symlink
+> support it lands as a text file containing `CLAUDE.md`, which still points the
+> right way.
+
 Desktop batch audio corrector. Offline, local, no account. A DJ or producer points
 Capstone at a folder of finished tracks and gets them back at one consistent
 loudness, with clipped peaks repaired, optional analogue-style warmth, optional
@@ -83,12 +88,18 @@ src/                      React frontend
   theme/                  color.ts — hex → RGB triplet helpers for the accent
   data/changelog.json     Release notes, keyed by version
 
+scripts/
+  mcp-sidecar.mjs         Builds capstone-mcp into src-tauri/binaries/ for a bundle
+
 src-tauri/
   Cargo.toml              Dev profile is optimised on purpose; `mp3` is a feature
   tauri.conf.json         Window chrome, asset protocol, bundle targets
   capabilities/           default.json — core/dialog/fs/opener/process
   src/
     main.rs               bin stub, calls capstone_lib::run()
+    bin/mcp.rs            `capstone-mcp` — the MCP server. See "MCP server" below
+    mcp/                  The agent tool surface: context, catalog, stdio, tools/
+    bridge/               Loopback HTTP the MCP server talks to while the app runs
     lib.rs                Module list + builder chain + the flat command list
     state.rs              AppState: queue, templates, settings, cancel/running flags
     error.rs              CapstoneError, serialized to a plain string for IPC
