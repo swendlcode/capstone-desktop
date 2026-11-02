@@ -9,6 +9,11 @@ rust-version = "1.87"
 description = "Batch loudness, clip repair, warmth and pitch correction for finished audio files"
 license = "MIT"
 publish = false
+# The MCP server is a second binary, which makes a bare `cargo run` ambiguous
+# — and `tauri dev` runs exactly that, so without this line the dev command
+# dies on "could not determine which binary to run" before the window ever
+# opens. The app is the default; the server is asked for by name.
+default-run = "capstone"
 
 [lib]
 name = "capstone_lib"
@@ -62,6 +67,12 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 parking_lot = "0.12"
+
+# --- the agent bridge --------------------------------------------------------
+# Loopback HTTP, so `capstone-mcp` can route a call through the running app.
+# It matters more here than in Keystone: the queue and the processing pool
+# only exist in the window, so this is the only way an agent reaches them.
+axum = "0.7"
 walkdir = "2"
 
 # Decoding. The defaults carry opt-simd, all-meta, wav, flac, pcm, adpcm, ogg,
@@ -109,3 +120,9 @@ image = { version = "0.25.10", default-features = false, features = ["jpeg", "pn
 
 base64 = "0.22.1"
 
+# The MCP server. Ships with the app: it reuses the crate's own template
+# validation, queue handling and job runner, which a separate package would
+# have had to reimplement and then drift from.
+[[bin]]
+name = "capstone-mcp"
+path = "src/bin/mcp.rs"

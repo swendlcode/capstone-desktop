@@ -796,6 +796,57 @@ keypair exists and `bundle.createUpdaterArtifacts` is set in `tauri.conf.json`,
 the build still succeeds and simply ships no update manifest. See the next section
 for what that means for in-app updating.
 
+## MCP server (agent access)
+
+`capstone-mcp` is a second binary in the same crate (`src-tauri/src/bin/mcp.rs`)
+exposing 16 tools over MCP stdio. Register it like any server:
+
+```json
+{ "mcpServers": { "capstone": { "command": "<path>/capstone-mcp" } } }
+```
+
+Adding that binary is why `default-run = "capstone"` is now in `Cargo.toml`.
+Two binaries make a bare `cargo run` ambiguous, and `tauri dev` runs exactly
+that — Keystone lost an afternoon to the same thing.
+
+**Two transports, chosen per call**, the same shape Keystone uses:
+
+1. **Through the running app**, over the loopback bridge (`src-tauri/src/bridge/`).
+2. **The files on disk**, when nothing answers the probe.
+
+**The fallback is narrower here, and that is the app's shape rather than an
+omission.** Templates and settings are JSON on disk, so an agent can read and
+write them with Capstone closed. The **queue is only ever in memory** and the
+processing pool and its progress events live in the window — so `get_queue`,
+`add_files`, `analyze_file`, `start_processing` and friends go through
+`require_live()` and return a sentence telling the caller to open the app.
+Returning an empty queue instead would read as "you have no files" rather
+than "the app is not running", which is the worse of the two lies.
+
+- `McpContext::from_state` takes the `AppHandle` separately, because
+  `AppState` does not hold one.
+- It clones the app's own `Arc<RwLock<…>>` for templates and settings, so a
+  write through the bridge is the write the window is already looking at.
+- `update_template` and `update_settings` take a **patch**, not the whole
+  object the way `save_template` does. An agent asked to raise a target by a
+  decibel should not have to echo back fourteen fields and six bands, and
+  every field it echoes is a field it can corrupt. The merge goes through
+  `Template`'s own deserialisation and then `share::clamped` — the same guard
+  an imported file gets — so a patch cannot leave the ranges Configure
+  enforces. `id` and `isStock` are reasserted after the merge: they are
+  identity, not settings.
+- `start_processing` returns as soon as the run starts, naming the template
+  and output folder, because progress arrives on events an MCP call cannot
+  wait on. `get_queue` is how the caller finds out how it went.
+- Reuse rather than duplication: `queue_commands::enqueue` was extracted so
+  `add_files` queues exactly the way a drop does — same folder walk, same
+  path-based dedupe, same stable order.
+- The bridge binds `127.0.0.1` on port 9872 (Stack 9870, Keystone 9871) and
+  still requires a bearer token from `<data>/mcp_bridge.json` at 0600.
+- **Nothing but protocol may touch stdout** in the binary; `tracing` goes to
+  stderr. A stray `println!` corrupts the stream and the client drops the
+  connection with no useful error.
+
 ## Known stubs / TODO
 
 - **In-app updating is not wired.** `@tauri-apps/plugin-updater` is in

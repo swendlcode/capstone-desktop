@@ -8,10 +8,12 @@
 //! checkable at a glance.
 
 pub mod audio;
+pub mod bridge;
 pub mod commands;
 pub mod cover;
 pub mod error;
 pub mod jobs;
+pub mod mcp;
 pub mod models;
 pub mod settings;
 pub mod state;
@@ -38,6 +40,9 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let state = AppState::init(app.handle().clone())?;
+            // The agent-facing bridge. Loopback and token-guarded; failing to
+            // bind is logged and never stops the window from opening.
+            bridge::start(app.handle().clone(), state.data_dir.clone());
             app.manage(state);
             Ok(())
         })
@@ -62,6 +67,17 @@ pub fn run() {
             commands::dialog_commands::pick_files,
             commands::dialog_commands::pick_folder,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        // Built and then run, rather than `.run(context)`, only so there is
+        // somewhere to hook Exit: the MCP bridge's handshake names a port
+        // that stops answering when the app does, and leaving the token file
+        // behind would point the next `capstone-mcp` at a dead socket.
+        .run(|handle, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                if let Some(state) = handle.try_state::<AppState>() {
+                    bridge::stop(&state.data_dir);
+                }
+            }
+        });
 }

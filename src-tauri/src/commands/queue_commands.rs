@@ -29,42 +29,53 @@ pub async fn add_paths(
     state: State<'_, AppState>,
 ) -> Result<Vec<QueuedFile>> {
     let queue = state.queue.clone();
-    let added = tokio::task::spawn_blocking(move || {
-        let found = expand(&paths);
-        let mut queue = queue.lock();
-        let mut added = Vec::new();
-        for (path, source_root) in found {
-            let path_string = path.to_string_lossy().to_string();
-            // The same file dropped twice is one row. Matching on the path and
-            // not on content is the right call for a file-in/file-out tool:
-            // two identical files in different folders are two jobs.
-            if queue.iter().any(|f| f.path == path_string) {
-                continue;
-            }
-            let file = QueuedFile {
-                id: uuid::Uuid::new_v4().to_string(),
-                filename: path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| path_string.clone()),
-                path: path_string,
-                analysis: None,
-                status: FileStatus::Pending,
-                result: None,
-                error: None,
-                source_root: source_root.map(|r| r.to_string_lossy().to_string()),
-            };
-            queue.push(file.clone());
-            added.push(file);
-        }
-        added
-    })
-    .await
-    .map_err(|e| CapstoneError::Other(e.to_string()))?;
+    let added = tokio::task::spawn_blocking(move || enqueue(&queue, &paths))
+        .await
+        .map_err(|e| CapstoneError::Other(e.to_string()))?;
 
     jobs::analysis::start(app, added.iter().map(|f| f.id.clone()).collect());
 
     Ok(added)
+}
+
+/// Expand the paths and append what is not already queued.
+///
+/// Extracted so the MCP server's `add_files` queues files the same way a drop
+/// does — same folder walk, same path-based dedupe, same stable order —
+/// rather than growing a second definition of what "add" means. Blocking: it
+/// walks the filesystem.
+pub(crate) fn enqueue(
+    queue: &std::sync::Arc<parking_lot::Mutex<Vec<QueuedFile>>>,
+    paths: &[String],
+) -> Vec<QueuedFile> {
+    let found = expand(paths);
+    let mut queue = queue.lock();
+    let mut added = Vec::new();
+    for (path, source_root) in found {
+        let path_string = path.to_string_lossy().to_string();
+        // The same file dropped twice is one row. Matching on the path and
+        // not on content is the right call for a file-in/file-out tool:
+        // two identical files in different folders are two jobs.
+        if queue.iter().any(|f| f.path == path_string) {
+            continue;
+        }
+        let file = QueuedFile {
+            id: uuid::Uuid::new_v4().to_string(),
+            filename: path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path_string.clone()),
+            path: path_string,
+            analysis: None,
+            status: FileStatus::Pending,
+            result: None,
+            error: None,
+            source_root: source_root.map(|r| r.to_string_lossy().to_string()),
+        };
+        queue.push(file.clone());
+        added.push(file);
+    }
+    added
 }
 
 /// Walks every folder given and keeps the audio files, in a stable order.
