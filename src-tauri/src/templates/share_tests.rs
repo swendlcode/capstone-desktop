@@ -197,3 +197,55 @@ fn a_stored_template_that_cannot_be_repaired_keeps_its_name_and_takes_the_defaul
     assert!(!safe.is_stock);
     assert_eq!(safe.bands.len(), 4);
 }
+
+/// The same input as the test above, through the path an *edit* takes.
+///
+/// `clamped` is right for a stored file: a template that cannot be repaired
+/// becomes a usable one rather than stopping the app from starting. Applied to
+/// a patch it is data loss, and it was: `update_template` with `bands: []`
+/// reported success and reset the target loudness, the warmth, the pitch
+/// correction and the headroom to festival's values, so asking to clear the
+/// bands quietly took the other settings too.
+#[test]
+fn an_edit_that_cannot_be_bound_is_refused_rather_than_reset_to_the_defaults() {
+    let mine = Template {
+        id: "mine".to_string(),
+        name: "Warehouse".to_string(),
+        is_stock: false,
+        target_lufs: -9.5,
+        warmth: Warmth::Tube,
+        correct_pitch: true,
+        bands: Vec::new(),
+        ..templates::festival()
+    };
+
+    let refused = validated(mine.clone());
+    assert!(
+        refused.is_err(),
+        "an empty band list has to come back as an error, not as the festival preset"
+    );
+
+    // And the caller's own copy is untouched, so nothing it holds was rewritten
+    // on the way through.
+    assert_eq!(mine.target_lufs, -9.5);
+    assert_eq!(mine.warmth, Warmth::Tube);
+    assert!(mine.correct_pitch);
+}
+
+/// A patch that only clamps still goes through, so the refusal above is about
+/// templates that cannot be bound at all rather than about any edit at the edge
+/// of a range.
+#[test]
+fn an_edit_at_the_edge_of_a_range_is_clamped_and_accepted() {
+    let mine = Template {
+        id: "mine".to_string(),
+        name: "Loud".to_string(),
+        is_stock: false,
+        target_lufs: 999.0,
+        ..templates::festival()
+    };
+
+    let bound = validated(mine).expect("a clampable value is not a refusal");
+    assert_eq!(bound.target_lufs, -6.0, "clamped to the ceiling");
+    assert_eq!(bound.name, "Loud");
+}

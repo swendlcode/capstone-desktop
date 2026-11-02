@@ -1,6 +1,6 @@
 [package]
 name = "capstone"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 # aifc and the rubato/audioadapter family declare 1.87; pinning it here turns a
 # too-old toolchain into one clear cargo message instead of a wall of type

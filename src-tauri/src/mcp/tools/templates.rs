@@ -50,7 +50,15 @@ pub fn update(ctx: &McpContext, args: &Value) -> Result<Value> {
                 "`{key}` is not a template field"
             )));
         }
-        object.insert(key.clone(), value.clone());
+        // `limiterCharacter` is a `u8` in the model, so 999 failed at
+        // deserialization with "expected u8" while every other numeric field
+        // clamped. Clamping it here keeps the one contract the tool states:
+        // values are held to the ranges the Configure tab enforces.
+        let value = match (key.as_str(), value.as_i64()) {
+            ("limiterCharacter", Some(n)) => json!(n.clamp(0, 10)),
+            _ => value.clone(),
+        };
+        object.insert(key.clone(), value);
     }
 
     // The id and the stock flag are identity, not settings: a patch that
@@ -60,7 +68,11 @@ pub fn update(ctx: &McpContext, args: &Value) -> Result<Value> {
 
     let updated: Template = serde_json::from_value(merged)
         .map_err(|e| CapstoneError::Other(format!("those fields do not make a template: {e}")))?;
-    let updated = share::clamped(updated);
+    // `validated`, not `clamped`. Clamped substitutes the festival preset when
+    // a template does not bind, keeping only the id and the name — correct for
+    // a stored file, data loss for a patch: `bands: []` reset the target
+    // loudness, warmth, pitch correction and headroom and answered OK.
+    let updated = share::validated(updated)?;
 
     {
         let mut templates = ctx.templates.write();

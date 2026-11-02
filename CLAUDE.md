@@ -854,6 +854,28 @@ than "the app is not running", which is the worse of the two lies.
   path-based dedupe, same stable order.
 - The bridge binds `127.0.0.1` on port 9872 (Stack 9870, Keystone 9871) and
   still requires a bearer token from `<data>/mcp_bridge.json` at 0600.
+### An edit is validated, never silently reset
+
+`update_template` runs the merged patch through **`share::validated`**, which
+returns `Result`. It must not use `share::clamped`.
+
+`clamped` answers a template that cannot be bound by substituting the whole
+festival preset, keeping only the id and the name. That is right for
+`templates::load` — a corrupt stored file becoming a usable template beats
+refusing to start — and it is data loss for an edit. Through `clamped`, a
+patch of `bands: []` reported **success** and reset the target loudness, the
+warmth, the pitch correction and the headroom to festival's values: measured
+at `-9.5 / tube / true / 2.5` going in and `-12.5 / gentle / false / 1.5`
+coming out. A one-field mistake quietly took the other thirteen settings.
+
+`an_edit_that_cannot_be_bound_is_refused_rather_than_reset_to_the_defaults` is
+the guard.
+
+`limiterCharacter` is also clamped in the patch before the merge. It is the
+one numeric field that is an integer in the model, so 999 failed
+deserialization with `expected u8` while every other numeric field clamped —
+inconsistent with the one contract the tool states.
+
 ### Shipping it: the sidecar
 
 The binary rides in the installers as a Tauri sidecar, landing at

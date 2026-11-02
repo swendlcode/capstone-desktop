@@ -127,6 +127,21 @@ pub fn from_json(raw: &str, taken: &[String]) -> Result<(Template, String)> {
 /// `templates.json` is as safe as an imported file. A template that cannot be
 /// bounded at all keeps its name and takes Festival's values, logged: the
 /// alternative is dropping something the user made without telling them.
+/// The same checks as [`clamped`], but the caller is told when they fail.
+///
+/// For an *edit* that is the only safe shape. `clamped` answers an invalid
+/// template by substituting the shipped festival preset, keeping the id and
+/// the name — which is right when loading a stored file, because a usable
+/// template beats refusing to start. Applied to a patch it is data loss:
+/// asking to clear the bands reset the target loudness, the warmth, the pitch
+/// correction and the headroom to festival's values and reported success, so
+/// a one-field mistake quietly took the other thirteen settings with it.
+pub fn validated(template: Template) -> Result<Template> {
+    let id = template.id.clone();
+    let name = template.name.clone();
+    bind(&to_shared(&template, ""), id, name)
+}
+
 pub fn clamped(template: Template) -> Template {
     let id = template.id.clone();
     let name = template.name.clone();
