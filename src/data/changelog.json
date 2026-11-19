@@ -1,4 +1,14 @@
 {
+  "0.2.4": {
+    "date": "2026-11-19",
+    "title": "A window that reads as a surface, and an interface you can size",
+    "summary": "The dark theme sits on the same ladder as Keystone and Stack, and the whole interface can be scaled to the display you are on.",
+    "highlights": [
+      "Interface scale: Cmd / Ctrl with + and − size the whole window, not just the text. Cmd / Ctrl 0 goes back to 100%, and the size is remembered per display.",
+      "The dark theme's surfaces were lifted so the window reads as a surface rather than a hole, and now match Keystone and Stack rung for rung.",
+      "The status bar prints the build number beside the version, so two local builds of one version are no longer identical on screen."
+    ]
+  },
   "0.2.3": {
     "date": "2026-11-02",
     "title": "An AI assistant can drive it, and a bad edit no longer resets a template",

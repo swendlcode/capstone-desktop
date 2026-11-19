@@ -5,6 +5,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { OnboardingTour } from './components/onboarding';
 import { useUiStore } from './stores/uiStore';
 import { useQueueSync } from './hooks/useQueue';
+import { useZoomKeys } from './hooks/useZoomKeys';
 
 // Each tab is split out so the first paint only carries the one that is open.
 const ProcessPage = lazy(() =>
@@ -24,6 +25,9 @@ export default function App() {
   // user reads the other two tabs, and a listener that unmounts with the table
   // would miss every event in between.
   useQueueSync();
+  // Cmd/Ctrl +/-/0. Root-level because it must work on every tab and inside
+  // every dialog.
+  useZoomKeys();
 
   return (
     <div className="h-app flex w-full flex-col overflow-hidden bg-capstone-black">

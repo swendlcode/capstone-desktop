@@ -32,7 +32,7 @@
   invisible control. Reaching into the ink half for a fill buys a grey slab.
 
   DISABLED IS A STEP DOWN THE INK RAMP, NOT AN OPACITY. Anything disabled
-  paints in --gray-500 (4.0:1 on a card in dark, 4.5:1 in light) and keeps its
+  paints in --gray-500 (4.4:1 on a card in dark, 4.5:1 in light) and keeps its
   full alpha. `opacity` multiplies down the tree, so a field that dimmed itself
   at 0.5 inside a row dimmed at 0.4 rendered at an effective 0.2 — the pitch
   card's "When off key by at least" and its cents field measured 1.38:1 in
@@ -43,13 +43,18 @@
   with.
 
   The dark values are not a numeric mirror of the light ones. They were
-  derived separately: planes are spaced by CIE L* (≈5–7 per step, which is
-  what makes an edge read on a near-black background) and ink is solved
-  against the worst plane it actually sits on. The previous ramp mirrored the
-  light values, which put four planes inside a 1.26:1 band.
+  derived separately: planes are spaced by CIE L* (3–5 per step, matching the
+  ladder Stack and Keystone use, which is the narrowest spacing at which an
+  edge still reads on a near-black background) and ink is solved against the
+  worst plane it actually sits on. The previous ramp mirrored the light
+  values, which put four planes inside a 1.26:1 band.
 */
 :root {
-  --capstone-black: 12 12 12;    /* #0c0c0c page */
+  /* The page is lifted off the floor of the ramp: at #0c0c0c (L* 3.3) it read
+     as a hole punched in the window rather than the surface the planes sit on.
+     The page is never lifted on its own — doing that alone closes the gap to
+     --gray-900 and flattens the planes into one tone. */
+  --capstone-black: 20 20 20;    /* #141414 page */
   --capstone-sky: 63 197 242;    /* #3fc5f2 */
   --capstone-white: 247 247 247; /* #f7f7f7 */
   /* The one hue outside the accent and the ramp, and it earns its place: a
@@ -58,18 +63,22 @@
      four components (the queue's status cell and counter, the update badge,
      the template importer) plus Tailwind's stock red in the context menu —
      five reds that never matched and none of which followed the light theme.
-     6.2:1 on the shell plane. */
+     6.3:1 on the shell plane. */
   --capstone-red: 255 107 107;   /* #ff6b6b error */
 
-  /* Planes. L* 3.3 / 9.3 / 14.2 / 21.2 — see the note above. */
+  /* Planes. L* 6.3 / 9.3 / 13.7 / 18.5 — see the note above. The three apps
+     share one dark ladder, so these are Stack's rungs without its blue cast.
+     Capstone's own rungs sat 3-6 L* higher, which is a visible mismatch with
+     Keystone and Stack side by side; the surface separation it cost is real
+     (bg->card 1.28:1 -> 1.17:1) and was accepted for the family match. */
   --gray-900: 26 26 26;          /* #1a1a1a shell: title bar, table head, footer, row hover */
-  --gray-800: 36 36 36;          /* #242424 cards, and the table's row rules */
-  --gray-700: 51 51 51;          /* #333333 wells, buttons, the default hairline */
+  --gray-800: 35 35 35;          /* #232323 cards, and the table's row rules */
+  --gray-700: 45 45 45;          /* #2d2d2d wells, buttons, the default hairline */
 
   /* Ink. */
-  --gray-600: 109 109 109;       /* #6d6d6d 3.0:1 on a card — hairlines, dots, unit labels */
-  --gray-500: 130 130 130;       /* #828282 4.5:1 on the shell plane */
-  --gray-400: 155 155 155;       /* #9b9b9b 4.5:1 inside a well */
+  --gray-600: 116 116 116;       /* #747474 3.4:1 on a card — hairlines, dots, unit labels */
+  --gray-500: 136 136 136;       /* #888888 4.9:1 on the shell plane, 4.4:1 on a card */
+  --gray-400: 165 165 165;       /* #a5a5a5 5.6:1 inside a well */
   --gray-300: 181 181 181;       /* #b5b5b5 */
   --gray-200: 210 210 210;       /* #d2d2d2 */
   --gray-100: 239 239 239;       /* #efefef */

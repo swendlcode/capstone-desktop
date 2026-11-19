@@ -2,11 +2,12 @@ import { PersonalizeRail } from '../components/personalize/PersonalizeRail';
 import { OutputLocationPane } from '../components/personalize/OutputLocationPane';
 import { OutputFormatPane } from '../components/personalize/OutputFormatPane';
 import { ProcessorLoadPane } from '../components/personalize/ProcessorLoadPane';
+import { InterfaceScalePane } from '../components/personalize/InterfaceScalePane';
 import { useSettings } from '../hooks/useSettings';
 import { useSettingsStore } from '../stores/settingsStore';
 
 /**
- * Personalize: a rail of three sections and the matching pane.
+ * Personalize: a rail of four sections and the matching pane.
  *
  * Like the Configure tab, there is no Save button — every control writes
  * through `update_settings` on change, and the pane renders from what came
@@ -29,6 +30,7 @@ export function PersonalizePage() {
           {section === 'location' && <OutputLocationPane settings={settings} />}
           {section === 'format' && <OutputFormatPane settings={settings} />}
           {section === 'cores' && <ProcessorLoadPane settings={settings} />}
+          {section === 'interface' && <InterfaceScalePane />}
         </>
       )}
     </div>

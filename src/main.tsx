@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { applyTheme, readPersistedAccent, readPersistedTheme } from './hooks/useTheme';
+import { initZoom } from './lib/appZoom';
 import './index.css';
 
 // Before React mounts, so the first paint is the user's theme rather than the
@@ -15,6 +16,10 @@ import './index.css';
 // Closing that needs data-theme set from index.html's <head>, which is not
 // this file's to write.
 applyTheme(readPersistedTheme(), readPersistedAccent());
+
+// Same reason, same place: the saved interface scale is restored before React
+// mounts so the first frame is already at the user's size.
+initZoom();
 
 window.addEventListener('error', (e) => {
   console.error('[Global] Unhandled error:', e.error ?? e.message);

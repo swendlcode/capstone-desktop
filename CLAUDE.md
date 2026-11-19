@@ -95,9 +95,12 @@ src/                      React frontend
   services/               capstoneService — THE ONLY module that calls invoke()
   stores/                 queueStore, uiStore, settingsStore (Zustand)
   types/                  The TS half of the IPC contract; re-exported from index.ts
-  lib/                    tauri-core / tauri-event transport shims (Vite-aliased)
+  lib/                    tauri-core / tauri-event transport shims (Vite-aliased),
+                          appBuild (the build number behind the status bar),
+                          appZoom (interface scale)
   theme/                  color.ts — hex → RGB triplet helpers for the accent
   data/changelog.json     Release notes, keyed by version
+  data/build.json         Local build counter, incremented by install-local.sh
 
 src-tauri/
   Cargo.toml              Dev profile is optimised on purpose; `mp3` is a feature
@@ -706,7 +709,7 @@ Open output, Remove from queue. `ContextMenu` is the shared primitive;
 CSS custom properties in `src/index.css`; Tailwind extends `capstone.*` and
 `gray.*`.
 
-- `--capstone-black` `#0C0C0C` (page), `--capstone-sky` `#3FC5F2` (accent),
+- `--capstone-black` `#141414` (page), `--capstone-sky` `#3FC5F2` (accent),
   `--capstone-white` `#F7F7F7` (foreground), plus a nine-step gray ramp
 - `--capstone-red` `#FF6B6B` is the one hue outside the accent and the ramp. It
   exists because a failed file has to separate from a queued one at a glance
@@ -739,13 +742,25 @@ Four rules that break things quietly if ignored:
   control; reaching into the ink half for a fill buys a grey slab. The dark
   values are **not** a numeric mirror of the light ones — planes are spaced by
   CIE L*, ink is solved against the worst plane it actually sits on. Mirroring
-  is what the old ramp did, and it put four planes inside a 1.26:1 band. The
-  light theme had the matching bug from the other side: `--gray-900` was pure
-  white, the same value as the page, so the shell had no plane of its own and
-  the queue's `hover:bg-gray-900` was a literal no-op.
+  is what the old ramp did, and it put four planes inside a 1.26:1 band.
+  The dark ladder also moves as a unit: the page was `#0C0C0C` (L* 3.3) and
+  read as a hole rather than the surface the planes sit on, so every rung came
+  up — page `#141414`, shell `#1A1A1A`, cards `#232323`, wells `#2D2D2D`
+  (L* 6.3 / 9.3 / 13.7 / 18.5) — and the ink came up with them so each one
+  keeps the ratio its comment claims. Those upper rungs are **Stack's ladder
+  without its blue cast**, and deliberately so: Capstone's own rungs sat 3–6
+  L* higher, which is a visible mismatch with Keystone and Stack side by side.
+  It costs surface separation (bg→card 1.28:1 → 1.17:1) and the plane steps
+  are now 3–5 L* rather than 5–7; that is the accepted price of the three apps
+  reading as one family, not a regression to fix back.
+  Raising the page alone closes the gap to `--gray-900` and the
+  shell loses its plane, which is the dark-theme twin of the bug the light
+  theme had from the other side: `--gray-900` was pure white, the same value
+  as the page, so the shell had no plane of its own and the queue's
+  `hover:bg-gray-900` was a literal no-op.
 - **Disabled is a step down the ink ramp, never an `opacity`.** A disabled
-  control paints in `gray-500` on a card (4.0:1 dark, 4.5:1 light) or
-  `gray-400` inside a well such as an `Input` (4.6:1 dark, 5.1:1 light), at
+  control paints in `gray-500` on a card (4.4:1 dark, 4.5:1 light) or
+  `gray-400` inside a well such as an `Input` (5.6:1 dark, 5.1:1 light), at
   full alpha. `opacity` multiplies down the tree: `FieldRow` used to dim a
   dependent row at `opacity-40` while the `NumberField` in it dimmed itself at
   `opacity-50`, so the pitch card's "When off key by at least" and its cents
@@ -800,6 +815,49 @@ The eight claims, one module each:
 The one layer not covered is the Tauri bridge itself: the queue runner needs a
 live `AppHandle`, so `support::pipeline` reassembles the same sequence
 `jobs::process_one` runs out of the same public calls.
+
+## Interface scale
+
+`lib/appZoom.ts` drives the **webview's own zoom**, the same mechanism a
+browser's Cmd +/- uses, rather than a root font size. That is deliberate:
+every dimension here is a px literal — the rail is `w-52`, the slider track
+has a fixed height — so scaling type alone gives bigger text inside the same
+furniture. Steps are a fixed ladder; the factor is persisted in
+`localStorage['capstone:zoom']` because it describes *this display*, which is
+also why it is not a settings row the backend owns.
+
+Needs `core:webview:allow-set-webview-zoom` in `capabilities/default.json`.
+The shortcut (`hooks/useZoomKeys.ts`) binds on the **capture** phase at the
+window, ahead of the dialogs that take the keyboard for themselves — `Modal`,
+`ContextMenu`, `TemplateMenu`, `MultibandEditor` all bind `keydown` — and has
+no input-field guard on purpose: zoom works while a template name is being
+typed, the same way it does in a browser.
+
+**Anything converting screen coordinates to viewport coordinates must divide
+by `currentZoom()`** — `getBoundingClientRect()` reports zoomed CSS pixels
+while the OS reports real ones. Nothing does today; `TitleBar` hands its drag
+to `startDragging()` and never reads a position.
+
+Browser mode is why `applyZoom` wraps the call in a real `try`:
+`getCurrentWebviewWindow()` reads `window.__TAURI_INTERNALS__.metadata` and
+**throws synchronously** outside a Tauri webview, so a `.catch()` on the
+promise it would have returned catches the wrong failure. The CSS `zoom`
+property is the fallback there.
+
+## Version and build number
+
+The version says what changed; the build number says which copy is running.
+They are different questions, and the second one could not be answered while
+several builds of 0.2.3 went on and off the machine in one afternoon — both
+called themselves 0.2.3. `src/data/build.json` holds the count,
+`scripts/install-local.sh` increments it before every build so nobody has to
+remember to, and the status bar reads `v0.2.3 (47)`.
+
+The counter is local by design. The release workflow takes the version from the
+tag and never touches `build.json`, so the number a CI build carries is
+whatever count was last committed; the version is what distinguishes released
+copies, and the build number is what distinguishes the unreleased ones on this
+machine.
 
 ## Release
 

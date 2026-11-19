@@ -3,6 +3,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { CapstoneMark, Coffee } from '../ui/icons';
 import { isTauri } from '../../lib/tauri-core';
+import { versionLabel } from '../../lib/appBuild';
 
 const SUPPORT_URL = 'https://www.buymeacoffee.com/swendl';
 
@@ -20,7 +21,9 @@ export function StatusBar() {
   // Read from the bundle, never written as a literal: a hardcoded string drifts
   // the moment a release ships and would then disagree with the version the
   // updater reports in the title bar. Absent in a plain browser, hence the
-  // nullable render below rather than a placeholder.
+  // nullable render below rather than a placeholder. The build number beside it
+  // comes from the repo rather than the bundle: two local builds of one version
+  // are identical on screen without it.
   useEffect(() => {
     if (!isTauri) return;
     let cancelled = false;
@@ -45,7 +48,7 @@ export function StatusBar() {
       <div className="flex min-w-0 items-center gap-2">
         <CapstoneMark size={11} className="shrink-0 text-capstone-sky/70" />
         <span className="font-semibold tracking-tight text-gray-300">Capstone</span>
-        {version && <span className="mono text-[10px]">v{version}</span>}
+        {version && <span className="mono text-[10px]">v{versionLabel(version)}</span>}
         <span aria-hidden className="text-gray-600">
           ·
         </span>
