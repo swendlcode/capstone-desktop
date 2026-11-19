@@ -523,7 +523,7 @@ dependencies = [
 
 [[package]]
 name = "capstone"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "aifc",
  "alac-encoder",

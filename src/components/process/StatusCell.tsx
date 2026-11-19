@@ -4,6 +4,17 @@ interface StatusCellProps {
   status: FileStatus;
   /** The backend's own message, shown on hover rather than in the cell. */
   error?: string | null;
+  /**
+   * Something that happened which is not a failure: the output was skipped
+   * because one was already there, or renamed to avoid overwriting one.
+   */
+  note?: string | null;
+  /**
+   * Whether a file was actually written. A skipped row finishes as `done`
+   * with no result, and labelling that "Done" would say the opposite of what
+   * happened — the user would go looking for a master that is not there.
+   */
+  wrote?: boolean;
 }
 
 const LABELS: Record<FileStatus, string> = {
@@ -37,14 +48,25 @@ const DOTS: Record<FileStatus, string> = {
   error: 'bg-capstone-red',
 };
 
-export function StatusCell({ status, error }: StatusCellProps) {
+export function StatusCell({ status, error, note, wrote = true }: StatusCellProps) {
+  // Finished, but nothing was written: the collision policy left the existing
+  // file alone. Grey rather than the accent, because the accent down this
+  // column means "this one was mastered".
+  const skipped = status === 'done' && !wrote;
+
   return (
     <span
-      className={`flex items-center gap-2 text-[11px] uppercase tracking-wide ${TONES[status]}`}
-      title={status === 'error' && error ? error : undefined}
+      className={`flex items-center gap-2 text-[11px] uppercase tracking-wide ${
+        skipped ? 'text-gray-400' : TONES[status]
+      }`}
+      title={(status === 'error' ? error : note) ?? note ?? undefined}
     >
-      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOTS[status]}`} />
-      <span className="truncate">{LABELS[status]}</span>
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+          skipped ? 'bg-gray-500' : DOTS[status]
+        }`}
+      />
+      <span className="truncate">{skipped ? 'Skipped' : LABELS[status]}</span>
     </span>
   );
 }

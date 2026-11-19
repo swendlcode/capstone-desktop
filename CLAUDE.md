@@ -873,6 +873,56 @@ keypair exists and `bundle.createUpdaterArtifacts` is set in `tauri.conf.json`,
 the build still succeeds and simply ships no update manifest. See the next section
 for what that means for in-app updating.
 
+## Naming the output file
+
+Two rules, both paid for.
+
+**The extension is appended to the whole stem, never applied with
+`set_extension`.** `set_extension` replaces everything after the last dot in
+the name it is given, and a track title routinely has one. A stem of
+`Dom Dolla - Strangers ft. Mansionair` has an "extension" of ` Mansionair` by
+that rule, so the master came out as `Dom Dolla - Strangers ft.aiff`.
+`Fred again.. - Delilah` became `Fred again..aiff`, and `kai.wav & ...` became
+`kai.aiff`. Every test in `output_tests.rs` used a dot-free filename, which is
+why it shipped. `named()` is the single place the rule lives, so the ordinary
+branch and the self-overwrite branch cannot drift.
+
+**Two sources never land on one destination.** `output_path` is a pure
+function of one source, so it cannot see that `track.wav` and `track.flac`
+both resolve to `track.aiff` — and the write is a temp-and-rename, so the
+second silently replaced the first while the run reported two successes and
+left one file. The truncation above made that routine rather than rare.
+`Destinations` is the run-scoped claim set that closes it: one per run, shared
+across the worker threads, with the existence check and the claim under one
+lock so two threads cannot take the same free name.
+
+`Settings::collision_policy` (`overwrite`, the default and what Capstone has
+always done, `skip`, or `rename`) decides what happens to a file that was
+**already on disk** before the run. It is deliberately not consulted for a
+collision *within* a run: whichever way it is set, overwriting loses a track
+the user asked for and skipping silently drops one, so those are always
+renamed apart. A skip is resolved **before** decoding — resuming a batch over
+four hundred finished files must not pay for four hundred decodes — and it
+finishes as `done` with no `result`, which is why `QueuedFile::note` exists
+and why `StatusCell` reads "Skipped" rather than "Done" for a row that wrote
+nothing. Labelling it Done would send the user looking for a master that is
+not there.
+
+`serde(default)` on `collision_policy` is load bearing. `settings::load` falls
+back to the **whole** default struct when the file fails to parse, so a new
+field without a default would have silently reset every stored preference on
+the first launch after the update.
+
+## What a master reports
+
+`ProcessResult` carries `true_peak_after_db` and the `ceiling_db` it was
+produced against, beside `lufs_after`. Loudness is an average: a file can sit
+exactly on its target and still have an inter-sample peak over the ceiling, so
+`lufs_after` alone cannot answer the question a master is actually checked
+for. The measurement is free — `analyze::loudness` reads integrated loudness
+and true peak in the same meter pass, which is the pass that was already being
+taken to read the loudness back.
+
 ## MCP server (agent access)
 
 `capstone-mcp` is a second binary in the same crate (`src-tauri/src/bin/mcp.rs`)
@@ -915,6 +965,20 @@ than "the app is not running", which is the worse of the two lies.
 - `start_processing` returns as soon as the run starts, naming the template
   and output folder, because progress arrives on events an MCP call cannot
   wait on. `get_queue` is how the caller finds out how it went.
+- **`get_queue` answers with counts, not rows.** Fifty files of full rows is
+  every reading, every result and every path, and the question being asked is
+  almost always how far along a run is. So the default is counts by status,
+  `files: true` or a `status` filter opts into the rows, and failures are
+  carried whatever was asked for — a run that finished with three errors must
+  not read as finished-and-fine just because the cheap call was made.
+- **`launch_app`** starts the app and waits for its bridge, so an agent can
+  satisfy the live-only tools itself. Every one of their descriptions names
+  it: "needs the app" is only half an instruction. The app is found from
+  `current_exe`, since `capstone-mcp` ships inside the bundle, rather than
+  from a guess at /Applications.
+- The catalogue, `TOOL_NAMES` and the `dispatch` arms must agree, and nothing
+  checked it until `catalog.rs` grew tests for it — including one that asserts
+  every live-only tool's description names `launch_app`.
 - Reuse rather than duplication: `queue_commands::enqueue` was extracted so
   `add_files` queues exactly the way a drop does — same folder walk, same
   path-based dedupe, same stable order.

@@ -4,7 +4,7 @@
 //! Split out of output.rs to keep that module inside the size cap.
 
 use super::*;
-use crate::models::Mp3Rate;
+use crate::models::{CollisionPolicy, Mp3Rate};
 
 fn settings(location: OutputLocation, dir: Option<&str>, mirror: bool) -> Settings {
     Settings {
@@ -15,6 +15,7 @@ fn settings(location: OutputLocation, dir: Option<&str>, mirror: bool) -> Settin
         mp3_rate: Mp3Rate::Cbr320,
         max_cores: 1,
         active_template_id: crate::templates::FESTIVAL_ID.to_string(),
+        collision_policy: CollisionPolicy::Overwrite,
     }
 }
 
@@ -102,6 +103,62 @@ fn mirroring_is_ignored_when_writing_beside_the_source() {
     s.format = OutputFormat::Flac;
     let dest = output_path(Path::new("/music/crate/track.wav"), None, &s).unwrap();
     assert_eq!(dest, PathBuf::from("/music/crate/track.flac"));
+}
+
+/// `set_extension` replaces everything after the last dot in the stem, and a
+/// track title routinely has one. Every case here is a real file that came out
+/// of Capstone truncated.
+#[test]
+fn a_dot_in_the_title_does_not_truncate_the_name() {
+    let mut s = settings(OutputLocation::Specific, Some("/out"), false);
+    s.format = OutputFormat::Aiff;
+
+    for (source, expected) in [
+        (
+            "/in/Dom Dolla - Strangers ft. Mansionair.wav",
+            "/out/Dom Dolla - Strangers ft. Mansionair.aiff",
+        ),
+        (
+            "/in/Fred again.. - Delilah.wav",
+            "/out/Fred again.. - Delilah.aiff",
+        ),
+        ("/in/kai.wav & ....wav", "/out/kai.wav & ....aiff"),
+        // A leading dot is the whole name, not an extension: `file_stem` keeps
+        // it, and appending must not eat it either.
+        ("/in/.hidden track.wav", "/out/.hidden track.aiff"),
+    ] {
+        assert_eq!(
+            output_path(Path::new(source), None, &s).unwrap(),
+            PathBuf::from(expected),
+            "{source}",
+        );
+    }
+}
+
+/// Two sources whose names differ only after a dot used to truncate onto one
+/// destination, and `write_atomically` replaces, so the second silently
+/// overwrote the first.
+#[test]
+fn names_that_differ_after_a_dot_keep_separate_destinations() {
+    let mut s = settings(OutputLocation::Specific, Some("/out"), false);
+    s.format = OutputFormat::Aiff;
+    let a = output_path(Path::new("/in/Artist - Strangers ft. Mansionair.wav"), None, &s).unwrap();
+    let b = output_path(Path::new("/in/Artist - Strangers ft. Nobody.wav"), None, &s).unwrap();
+    assert_ne!(a, b);
+}
+
+/// The self-overwrite guard builds its name the same way, so a dotted title
+/// must not truncate on that branch either.
+#[test]
+fn the_self_overwrite_suffix_keeps_a_dotted_title_whole() {
+    let s = settings(OutputLocation::SameAsSource, None, false);
+    let source = Path::new("/music/Fred again.. - Delilah.wav");
+    let dest = output_path(source, None, &s).unwrap();
+    assert_ne!(dest, source);
+    assert_eq!(
+        dest,
+        PathBuf::from("/music/Fred again.. - Delilah-capstone.wav")
+    );
 }
 
 /// The one outcome a batch processor must never produce.
@@ -212,4 +269,133 @@ fn an_existing_output_is_replaced() {
     .unwrap();
 
     assert_eq!(std::fs::read(&dest).unwrap(), b"new");
+}
+
+// ---------------------------------------------------------------------------
+// Collisions
+// ---------------------------------------------------------------------------
+
+/// Two sources resolving to one destination is the case the truncation bug
+/// made routine, and the one where silently replacing loses a track.
+#[test]
+fn two_sources_in_one_run_never_land_on_the_same_file() {
+    let dir = scratch("collide-run");
+    let out = dir.to_string_lossy().to_string();
+    let mut s = settings(OutputLocation::Specific, Some(&out), false);
+    s.format = OutputFormat::Aiff;
+
+    let claims = Destinations::new();
+    let first = claims
+        .resolve(Path::new("/in/track.wav"), None, &s)
+        .unwrap();
+    let second = claims
+        .resolve(Path::new("/in/track.flac"), None, &s)
+        .unwrap();
+
+    let Destination::Write { path: a, note: none } = first else {
+        panic!("the first file should write its own name");
+    };
+    assert_eq!(a, dir.join("track.aiff"));
+    assert!(none.is_none());
+
+    let Destination::Write { path: b, note } = second else {
+        panic!("the second file must still be written, not skipped");
+    };
+    assert_eq!(b, dir.join("track (2).aiff"));
+    assert!(note.unwrap().contains("another file in this run"));
+}
+
+/// The in-run rule holds whatever the policy is: `overwrite` is about the file
+/// that was there before the run, never about the one we just wrote.
+#[test]
+fn overwrite_does_not_mean_overwriting_this_runs_own_output() {
+    let dir = scratch("collide-overwrite");
+    let out = dir.to_string_lossy().to_string();
+    let mut s = settings(OutputLocation::Specific, Some(&out), false);
+    s.collision_policy = CollisionPolicy::Overwrite;
+
+    let claims = Destinations::new();
+    let a = claims.resolve(Path::new("/in/t.wav"), None, &s).unwrap();
+    let b = claims.resolve(Path::new("/in/t.aiff"), None, &s).unwrap();
+    match (a, b) {
+        (Destination::Write { path: first, .. }, Destination::Write { path: second, .. }) => {
+            assert_ne!(first, second)
+        }
+        _ => panic!("both files must be written"),
+    }
+}
+
+#[test]
+fn skip_leaves_an_existing_output_alone() {
+    let dir = scratch("collide-skip");
+    let existing = dir.join("track.wav");
+    std::fs::write(&existing, b"already mastered").unwrap();
+
+    let out = dir.to_string_lossy().to_string();
+    let mut s = settings(OutputLocation::Specific, Some(&out), false);
+    s.collision_policy = CollisionPolicy::Skip;
+
+    let claims = Destinations::new();
+    assert_eq!(
+        claims.resolve(Path::new("/in/track.flac"), None, &s).unwrap(),
+        Destination::Skip { existing: existing.clone() }
+    );
+    // Untouched, which is the whole point.
+    assert_eq!(std::fs::read(&existing).unwrap(), b"already mastered");
+}
+
+#[test]
+fn rename_writes_beside_an_existing_output() {
+    let dir = scratch("collide-rename");
+    std::fs::write(dir.join("track.wav"), b"old").unwrap();
+    let out = dir.to_string_lossy().to_string();
+    let mut s = settings(OutputLocation::Specific, Some(&out), false);
+    s.collision_policy = CollisionPolicy::Rename;
+
+    let claims = Destinations::new();
+    let Destination::Write { path, note } =
+        claims.resolve(Path::new("/in/track.flac"), None, &s).unwrap()
+    else {
+        panic!("rename must still write");
+    };
+    // `settings()` builds a WAV-format Settings, so the destination is
+    // `track.wav`, which already exists.
+    assert_eq!(path, dir.join("track (2).wav"));
+    assert!(note.unwrap().contains("already existed"));
+}
+
+#[test]
+fn overwrite_replaces_an_existing_output() {
+    let dir = scratch("collide-replace");
+    std::fs::write(dir.join("track.wav"), b"old").unwrap();
+    let out = dir.to_string_lossy().to_string();
+    let s = settings(OutputLocation::Specific, Some(&out), false);
+
+    let claims = Destinations::new();
+    assert_eq!(
+        claims.resolve(Path::new("/in/track.flac"), None, &s).unwrap(),
+        Destination::Write { path: dir.join("track.wav"), note: None }
+    );
+}
+
+/// The variant suffix goes before the extension and must not cut a dotted
+/// title, the same rule `output_path` follows.
+#[test]
+fn a_renamed_variant_keeps_a_dotted_title_whole() {
+    let dir = scratch("collide-dotted");
+    let out = dir.to_string_lossy().to_string();
+    let mut s = settings(OutputLocation::Specific, Some(&out), false);
+    s.format = OutputFormat::Aiff;
+
+    let claims = Destinations::new();
+    claims
+        .resolve(Path::new("/in/Fred again.. - Delilah.wav"), None, &s)
+        .unwrap();
+    let Destination::Write { path, .. } = claims
+        .resolve(Path::new("/in/Fred again.. - Delilah.flac"), None, &s)
+        .unwrap()
+    else {
+        panic!("expected a write");
+    };
+    assert_eq!(path, dir.join("Fred again.. - Delilah (2).aiff"));
 }

@@ -1,4 +1,14 @@
 {
+  "0.2.5": {
+    "date": "2026-11-19",
+    "title": "Output files keep their names",
+    "summary": "A dot in a track title no longer cuts the output filename short, and two files can never land on the same one.",
+    "highlights": [
+      "A title with a dot in it keeps its whole name: “Dom Dolla - Strangers ft. Mansionair” was being written as “Dom Dolla - Strangers ft.aiff”.",
+      "Two files that would be written to the same name are now kept apart, and you can choose what happens when a file is already there — replace it, skip it, or keep both.",
+      "A finished master reports its true peak and the ceiling it was made against, not just its loudness."
+    ]
+  },
   "0.2.4": {
     "date": "2026-11-19",
     "title": "A window that reads as a surface, and an interface you can size",

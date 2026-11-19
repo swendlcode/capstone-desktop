@@ -92,7 +92,12 @@ export const QueueRow = memo(function QueueRow({
       />
       <MetricCell value={pitchAfter ?? pitch} before={pitchAfter ? pitch : null} />
 
-      <StatusCell status={file.status} error={file.error} />
+      <StatusCell
+        status={file.status}
+        error={file.error}
+        note={file.note}
+        wrote={file.status !== 'done' || r !== null}
+      />
 
       <button
         onClick={(e) => {

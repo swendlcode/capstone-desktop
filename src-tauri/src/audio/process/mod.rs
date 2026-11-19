@@ -72,10 +72,18 @@ pub fn process(audio: &mut DecodedAudio, template: &Template) -> Result<ProcessR
         template.limiter_character,
     );
 
+    // One meter pass for both: `loudness` reads integrated loudness and true
+    // peak together, so the reading that was already being taken answers the
+    // peak question too.
+    let (lufs_after, true_peak_after_db) =
+        crate::audio::analyze::loudness(audio).unwrap_or((SILENCE_LUFS, f64::NEG_INFINITY));
+
     Ok(ProcessResult {
         output_path: String::new(),
         lufs_before,
-        lufs_after: integrated_lufs(audio).unwrap_or(SILENCE_LUFS),
+        lufs_after,
+        true_peak_after_db,
+        ceiling_db: -template.headroom_db,
         clips_repaired,
         gain_applied_db,
         pitch_corrected_cents,

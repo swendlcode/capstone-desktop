@@ -3,7 +3,7 @@ import { Checkbox } from '../ui/Checkbox';
 import { Radio } from '../ui/Radio';
 import { Pane } from './Pane';
 import { usePickOutputDir, useSettingsPatch } from '../../hooks/useSettings';
-import type { Settings } from '../../types';
+import type { CollisionPolicy, Settings } from '../../types';
 
 /**
  * Where processed files land.
@@ -12,7 +12,18 @@ import type { Settings } from '../../types';
  * back to a Capstone folder under the user's audio directory, so a first run
  * writes something without being asked. The pane says so rather than showing an
  * empty path and implying the setting is broken.
+ *
+ * The collision choice lives here rather than in a section of its own: it only
+ * means anything together with the folder above it, and it is the second half
+ * of the same question — where the file goes, and what happens if something is
+ * already there.
  */
+const COLLISION_CHOICES: { value: CollisionPolicy; label: string }[] = [
+  { value: 'overwrite', label: 'Replace it' },
+  { value: 'skip', label: 'Leave it and skip the file' },
+  { value: 'rename', label: 'Keep both \u2014 write \u201cname (2)\u201d' },
+];
+
 export function OutputLocationPane({ settings }: { settings: Settings }) {
   const { patch } = useSettingsPatch();
   const pickDir = usePickOutputDir();
@@ -60,6 +71,30 @@ export function OutputLocationPane({ settings }: { settings: Settings }) {
         onChange={() => patch({ outputLocation: 'same_as_source' })}
         label="Same folder as the original file"
       />
+
+      <div className="mt-1 border-t border-gray-700/70 pt-4">
+        <p className="text-[10px] uppercase tracking-widest text-gray-500">
+          If a file is already there
+        </p>
+        <div className="mt-3 flex flex-col gap-2">
+          {COLLISION_CHOICES.map(({ value, label }) => (
+            <Radio
+              key={value}
+              name="capstone-collision"
+              checked={settings.collisionPolicy === value}
+              onChange={() => patch({ collisionPolicy: value })}
+              label={label}
+            />
+          ))}
+        </div>
+        {/* Said once, here, because it is the one part of this that is not a
+            choice: two files in the same run that resolve to one name are
+            always kept apart, since either alternative loses a track. */}
+        <p className="mt-3 text-xs leading-relaxed text-gray-500">
+          Two files in one run that would land on the same name are always kept
+          apart, whichever of these is set.
+        </p>
+      </div>
     </Pane>
   );
 }

@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::error::Result;
-use crate::models::{Mp3Rate, OutputFormat, OutputLocation, Settings};
+use crate::models::{CollisionPolicy, Mp3Rate, OutputFormat, OutputLocation, Settings};
 
 const FILE_NAME: &str = "settings.json";
 
@@ -24,6 +24,7 @@ impl Default for Settings {
             mp3_rate: Mp3Rate::Cbr320,
             max_cores: default_max_cores(),
             active_template_id: crate::templates::FESTIVAL_ID.to_string(),
+            collision_policy: CollisionPolicy::default(),
         }
     }
 }

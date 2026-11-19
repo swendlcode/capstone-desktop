@@ -90,6 +90,9 @@ fn run_inner(app: &AppHandle, state: &AppState) -> Result<()> {
 
     let ids = pending_ids(state);
     let total = ids.len();
+    // One per run. Shared across the worker threads, because the collision it
+    // exists to prevent is between two files being processed at the same time.
+    let destinations = output::Destinations::new();
     let done = AtomicUsize::new(0);
     let failed = AtomicUsize::new(0);
 
@@ -108,7 +111,7 @@ fn run_inner(app: &AppHandle, state: &AppState) -> Result<()> {
             if state.is_cancelled() {
                 return;
             }
-            if !run_one(app, state, id, &settings, &template) {
+            if !run_one(app, state, id, &settings, &template, &destinations) {
                 failed.fetch_add(1, Ordering::Relaxed);
             }
             let finished = done.fetch_add(1, Ordering::Relaxed) + 1;
@@ -173,6 +176,7 @@ fn run_one(
     id: &str,
     settings: &Settings,
     template: &Template,
+    destinations: &output::Destinations,
 ) -> bool {
     if let Some(file) = state.update_file(id, |f| {
         f.status = FileStatus::Processing;
@@ -181,11 +185,28 @@ fn run_one(
         emit_file(app, &file);
     }
 
-    match process_one(state, id, settings, template) {
-        Ok(result) => {
+    match process_one(state, id, settings, template, destinations) {
+        Ok(Outcome::Processed { result, note }) => {
             if let Some(file) = state.update_file(id, |f| {
                 f.status = FileStatus::Done;
                 f.result = Some(result.clone());
+                f.note = note.clone();
+            }) {
+                emit_file(app, &file);
+            }
+            true
+        }
+        // Not an error: the user asked for existing outputs to be left alone.
+        // It counts as a success so a batch of already-mastered files does not
+        // report itself as a run that failed.
+        Ok(Outcome::Skipped { existing }) => {
+            if let Some(file) = state.update_file(id, |f| {
+                f.status = FileStatus::Done;
+                f.result = None;
+                f.note = Some(format!(
+                    "skipped: {} already exists",
+                    existing.display()
+                ));
             }) {
                 emit_file(app, &file);
             }
@@ -216,23 +237,41 @@ fn emit<P: Serialize + Clone>(app: &AppHandle, event: &str, payload: P) {
 /// Decode, process, encode. The only stage that knows about the filesystem is
 /// this one and `output`, which is what lets the whole DSP chain be tested on a
 /// buffer with no disk involved.
+/// What one file's turn produced.
+enum Outcome {
+    Processed {
+        result: ProcessResult,
+        note: Option<String>,
+    },
+    Skipped {
+        existing: PathBuf,
+    },
+}
+
 fn process_one(
     state: &AppState,
     id: &str,
     settings: &Settings,
     template: &Template,
-) -> Result<ProcessResult> {
+    destinations: &output::Destinations,
+) -> Result<Outcome> {
     let file = state.queued_file(id)?;
     let source = PathBuf::from(&file.path);
 
-    let mut audio = crate::audio::decode::decode_to_f32(&source)?;
-    let mut result = crate::audio::process::process(&mut audio, template)?;
-
-    let dest = output::output_path(
+    // Resolved before decoding. A skip must not pay for a decode and a full
+    // mastering chain first, and a batch resumed over four hundred finished
+    // files is the case that makes that worth the ordering.
+    let (dest, note) = match destinations.resolve(
         &source,
         file.source_root.as_deref().map(Path::new),
         settings,
-    )?;
+    )? {
+        output::Destination::Skip { existing } => return Ok(Outcome::Skipped { existing }),
+        output::Destination::Write { path, note } => (path, note),
+    };
+
+    let mut audio = crate::audio::decode::decode_to_f32(&source)?;
+    let mut result = crate::audio::process::process(&mut audio, template)?;
     let spec = EncodeSpec {
         // No resampling: the file keeps the rate it arrived at. The format
         // labels in the UI name the common case, not a conversion.
@@ -253,5 +292,5 @@ fn process_one(
     // `process` never touches the filesystem, so it leaves this empty and the
     // path is filled in here, once there is actually a file at it.
     result.output_path = dest.to_string_lossy().to_string();
-    Ok(result)
+    Ok(Outcome::Processed { result, note })
 }

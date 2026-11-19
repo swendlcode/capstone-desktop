@@ -8,7 +8,13 @@ export type {
   Template,
   ImportedTemplate,
 } from './template';
-export type { OutputFormat, Mp3Rate, OutputLocation, Settings } from './settings';
+export type {
+  OutputFormat,
+  Mp3Rate,
+  OutputLocation,
+  CollisionPolicy,
+  Settings,
+} from './settings';
 export type { QueueProgress, QueueFinished } from './events';
 export {
   EVENT_FILE_UPDATED,

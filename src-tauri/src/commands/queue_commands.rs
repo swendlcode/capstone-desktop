@@ -70,6 +70,7 @@ pub(crate) fn enqueue(
             status: FileStatus::Pending,
             result: None,
             error: None,
+            note: None,
             source_root: source_root.map(|r| r.to_string_lossy().to_string()),
         };
         queue.push(file.clone());

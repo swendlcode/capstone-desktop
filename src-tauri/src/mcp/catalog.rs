@@ -23,10 +23,14 @@ pub const TOOL_NAMES: &[&str] = &[
     "analyze_file",
     "start_processing",
     "cancel_processing",
+    "launch_app",
 ];
 
 /// Said on every tool that cannot work without the window.
-const NEEDS_APP: &str = " Needs Capstone to be running.";
+///
+/// It names `launch_app`, because "needs the app" is only half an instruction:
+/// the other half is what to do about it.
+const NEEDS_APP: &str = " Needs Capstone to be running — call launch_app first if it is not.";
 
 fn tool(name: &str, description: &str, props: Value, required: &[&str]) -> Value {
     json!({
@@ -38,6 +42,10 @@ fn tool(name: &str, description: &str, props: Value, required: &[&str]) -> Value
             "required": required,
         },
     })
+}
+
+fn boolean(description: &str) -> Value {
+    json!({ "type": "boolean", "description": description })
 }
 
 fn string(description: &str) -> Value {
@@ -107,14 +115,17 @@ pub fn tool_list() -> Value {
             "update_settings",
             "Change named output settings. Send only what changes, e.g. {\"format\": \"wav\"}. Setting activeTemplateId is checked against the templates that exist.",
             json!({
-                "fields": json!({ "type": "object", "description": "Field name to new value: outputLocation, outputDir, mirrorInputStructure, format, mp3Rate, maxCores, activeTemplateId." })
+                "fields": json!({ "type": "object", "description": "Field name to new value: outputLocation, outputDir, mirrorInputStructure, format, mp3Rate, maxCores, activeTemplateId, collisionPolicy (overwrite, skip or rename — what to do when a file is already at the destination; two files in one run that would collide are always renamed apart regardless)." })
             }),
             &["fields"],
         ),
         tool(
             "get_queue",
-            &format!("The files waiting, being processed, or finished — with each one's readings and its result or error. This is how you find out how a run went.{NEEDS_APP}"),
-            json!({}),
+            &format!("How a run is going. Returns counts by status (pending, analyzing, analyzed, processing, done, error) plus any failures with their reasons. Pass `files` true, or a `status`, for the full rows — fifty files of rows is a great deal of detail for a progress check.{NEEDS_APP}"),
+            json!({
+                "files": boolean("Include the full row for each file: its readings, its result, its paths. Default false."),
+                "status": string("Only files in this state: pending, analyzing, analyzed, processing, done or error. Implies `files`.")
+            }),
             &[],
         ),
         tool(
@@ -153,5 +164,84 @@ pub fn tool_list() -> Value {
             json!({}),
             &[],
         ),
+        tool(
+            "launch_app",
+            "Start Capstone and wait until it answers, so the tools that need the running app will work. Returns immediately if it is already running.",
+            json!({ "wait": boolean("Wait for it to come up, default true. False returns as soon as it has been started.") }),
+            &[],
+        ),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The three lists — `TOOL_NAMES`, the catalogue, and the match arms in
+    /// `tools::dispatch` — have to agree, and nothing checked it. A tool
+    /// advertised without an arm answers "no tool named"; an arm with no
+    /// catalogue entry is a tool the model never finds out about.
+    #[test]
+    fn the_catalogue_and_the_name_list_agree() {
+        let advertised: Vec<String> = tool_list()
+            .as_array()
+            .expect("an array of tools")
+            .iter()
+            .map(|t| t["name"].as_str().expect("a name").to_string())
+            .collect();
+        let listed: Vec<String> = TOOL_NAMES.iter().map(|s| s.to_string()).collect();
+        assert_eq!(advertised, listed, "tool_list and TOOL_NAMES disagree");
+    }
+
+    #[test]
+    fn every_tool_has_a_description_and_a_coherent_schema() {
+        for entry in tool_list().as_array().expect("an array") {
+            let name = entry["name"].as_str().expect("a name");
+            assert!(
+                !entry["description"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .trim()
+                    .is_empty(),
+                "{name} has no description"
+            );
+            assert_eq!(entry["inputSchema"]["type"], "object", "{name}");
+            for required in entry["inputSchema"]["required"]
+                .as_array()
+                .expect("a required list")
+            {
+                let key = required.as_str().expect("a string");
+                assert!(
+                    entry["inputSchema"]["properties"].get(key).is_some(),
+                    "{name} requires `{key}` but does not declare it"
+                );
+            }
+        }
+    }
+
+    /// The tools that cannot work with the app closed must say so, and say
+    /// what to do about it. Every one of them goes through `require_live`.
+    #[test]
+    fn the_live_only_tools_name_the_way_out() {
+        let live_only = [
+            "get_queue",
+            "add_files",
+            "remove_from_queue",
+            "clear_queue",
+            "analyze_file",
+            "start_processing",
+            "cancel_processing",
+        ];
+        for entry in tool_list().as_array().expect("an array") {
+            let name = entry["name"].as_str().expect("a name");
+            if !live_only.contains(&name) {
+                continue;
+            }
+            let description = entry["description"].as_str().unwrap_or_default();
+            assert!(
+                description.contains("launch_app"),
+                "{name} needs the app but does not tell the model how to get it"
+            );
+        }
+    }
 }

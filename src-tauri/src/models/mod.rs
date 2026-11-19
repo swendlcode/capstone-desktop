@@ -40,6 +40,28 @@ pub enum FileStatus {
     Error,
 }
 
+/// What to do when the destination is already taken.
+///
+/// Only ever about a file that was **already on disk** before this run. Two
+/// sources that resolve to one destination *within* a run are a different
+/// thing and are always renamed apart: whichever policy is set, writing one
+/// over the other loses a track the user asked for, and skipping silently
+/// drops one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum CollisionPolicy {
+    /// Replace it. The default, and what Capstone has always done: the common
+    /// case is reprocessing a file after changing a template, where the old
+    /// output is exactly what should go.
+    #[default]
+    Overwrite,
+    /// Leave it and leave the source alone, for picking up a batch that was
+    /// interrupted half way.
+    Skip,
+    /// Write beside it as `name (2).aiff`.
+    Rename,
+}
+
 /// One row of the Process Audio Files table.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,6 +73,12 @@ pub struct QueuedFile {
     pub status: FileStatus,
     pub result: Option<ProcessResult>,
     pub error: Option<String>,
+    /// Something that happened to this file which is not a failure: the output
+    /// was skipped because one was already there, or it was renamed to avoid
+    /// overwriting one. A finished row with a surprise in it would otherwise
+    /// be indistinguishable from an ordinary one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
     /// The folder this file was dropped in, when it arrived as part of one.
     ///
     /// `None` for a file picked individually. Mirroring needs it: without a
@@ -69,6 +97,18 @@ pub struct ProcessResult {
     pub output_path: String,
     pub lufs_before: f64,
     pub lufs_after: f64,
+    /// True peak of the finished file, dBTP.
+    ///
+    /// Reported because `lufs_after` alone cannot answer the question a master
+    /// is checked for: loudness is an average, and a file can sit exactly on
+    /// its target and still have an inter-sample peak over the ceiling. The
+    /// measurement is free — the meter that reads the loudness back reads
+    /// this in the same pass.
+    pub true_peak_after_db: f64,
+    /// The limiter ceiling this was produced against, dBTP: the template's
+    /// `headroom_db` as the distance below full scale it actually means. Sent
+    /// with the measurement so the two never have to be matched up by hand.
+    pub ceiling_db: f64,
     pub clips_repaired: u64,
     pub gain_applied_db: f64,
     pub pitch_corrected_cents: f64,
@@ -180,4 +220,10 @@ pub struct Settings {
     pub mp3_rate: Mp3Rate,
     pub max_cores: usize,
     pub active_template_id: String,
+    /// `serde(default)` is load bearing: `settings::load` falls back to the
+    /// whole default struct when the file fails to parse, so a new field
+    /// without a default would silently reset every stored preference on the
+    /// first launch after the update.
+    #[serde(default)]
+    pub collision_policy: CollisionPolicy,
 }

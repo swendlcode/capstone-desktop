@@ -1,10 +1,13 @@
 //! Where a processed file goes.
 
+use std::collections::HashSet;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use crate::audio::encode;
 use crate::error::{CapstoneError, Result};
-use crate::models::{OutputFormat, OutputLocation, Settings};
+use crate::models::{CollisionPolicy, OutputFormat, OutputLocation, Settings};
 
 /// Used when the user has chosen "Specific folder" but not yet said which one,
 /// so a first run can write something without stopping to ask.
@@ -50,6 +53,15 @@ pub fn bit_depth_for(format: OutputFormat) -> u16 {
 ///
 /// `source_root` is `None` for an individually picked file. There is no tree to
 /// mirror in that case, so the file lands directly in the output folder.
+///
+/// The extension is **appended to the whole stem**, never applied with
+/// `set_extension`. `set_extension` replaces everything after the last dot in
+/// the name it is given, and a track title routinely contains one: a stem of
+/// `Dom Dolla - Strangers ft. Mansionair` has an "extension" of ` Mansionair`
+/// by that rule, so the destination came out as `Dom Dolla - Strangers ft.aiff`.
+/// `Fred again.. - Delilah` became `Fred again..aiff` and `kai.wav & ...`
+/// became `kai.aiff`. Two sources can truncate onto one name that way, and the
+/// write is atomic-replace, so the second silently overwrote the first.
 pub fn output_path(
     source: &Path,
     source_root: Option<&Path>,
@@ -84,21 +96,160 @@ pub fn output_path(
         }
     }
 
-    let mut dest = dir.join(stem);
-    dest.set_extension(encode::extension(settings.format));
+    let mut dest = dir.join(named(stem, "", settings.format));
 
     // Writing over the file we are reading would destroy the original, which is
     // the one outcome a batch processor must never produce. It happens whenever
     // the output format matches the input's extension and the location is the
     // source's own folder.
     if dest == source {
-        let mut suffixed = stem.to_os_string();
-        suffixed.push("-capstone");
-        dest = dir.join(suffixed);
-        dest.set_extension(encode::extension(settings.format));
+        dest = dir.join(named(stem, "-capstone", settings.format));
     }
 
     Ok(dest)
+}
+
+/// `<stem><suffix>.<ext>`, built by appending rather than by `set_extension`.
+///
+/// Kept as one function so the self-overwrite branch cannot drift from the
+/// ordinary one, and so there is a single place the rule above is enforced.
+fn named(stem: &OsStr, suffix: &str, format: OutputFormat) -> OsString {
+    let mut name = stem.to_os_string();
+    if !suffix.is_empty() {
+        name.push(suffix);
+    }
+    name.push(".");
+    name.push(encode::extension(format));
+    name
+}
+
+// ---------------------------------------------------------------------------
+// Collisions
+// ---------------------------------------------------------------------------
+
+/// What one source resolved to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Destination {
+    /// Write here. `note` is set when the path is not the obvious one.
+    Write { path: PathBuf, note: Option<String> },
+    /// Leave the existing file alone and do not process the source at all.
+    Skip { existing: PathBuf },
+}
+
+/// The destinations claimed so far in one run.
+///
+/// Exists because `output_path` is a pure function of one source, and two
+/// different sources can resolve to one destination: `track.wav` and
+/// `track.flac` both become `track.aiff`. The write is a temp-and-rename, so
+/// the second would replace the first and the run would report two successes
+/// and leave one file. The truncation bug made that common rather than rare —
+/// every title with a dot in it collapsed onto a shorter name — but it was
+/// always reachable, and a policy of `overwrite` must not mean "overwrite the
+/// track I just mastered".
+#[derive(Debug, Default)]
+pub struct Destinations {
+    claimed: Mutex<HashSet<PathBuf>>,
+}
+
+impl Destinations {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Resolves one source, claiming whatever it returns.
+    ///
+    /// Called from the worker threads, so the claim and the existence check
+    /// happen under one lock: two threads resolving onto the same free name
+    /// would otherwise both take it.
+    pub fn resolve(
+        &self,
+        source: &Path,
+        source_root: Option<&Path>,
+        settings: &Settings,
+    ) -> Result<Destination> {
+        let base = output_path(source, source_root, settings)?;
+        let mut claimed = self
+            .claimed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        // Within this run: always rename apart, whatever the policy says.
+        if claimed.contains(&base) {
+            let path = free_variant(&base, &claimed);
+            claimed.insert(path.clone());
+            let note = Some(format!(
+                "another file in this run was already writing {}; written as {} instead",
+                name_of(&base),
+                name_of(&path)
+            ));
+            return Ok(Destination::Write { path, note });
+        }
+
+        // Already on disk before the run: the user's policy decides.
+        if base.exists() {
+            match settings.collision_policy {
+                CollisionPolicy::Skip => {
+                    return Ok(Destination::Skip { existing: base });
+                }
+                CollisionPolicy::Rename => {
+                    let path = free_variant(&base, &claimed);
+                    claimed.insert(path.clone());
+                    let note = Some(format!(
+                        "{} already existed; written as {} instead",
+                        name_of(&base),
+                        name_of(&path)
+                    ));
+                    return Ok(Destination::Write { path, note });
+                }
+                CollisionPolicy::Overwrite => {}
+            }
+        }
+
+        claimed.insert(base.clone());
+        Ok(Destination::Write { path: base, note: None })
+    }
+}
+
+/// `name (2).aiff`, `name (3).aiff`, … — the first that is neither on disk nor
+/// already claimed by this run.
+///
+/// The suffix goes before the extension and is appended to the *whole* stem,
+/// for the reason in `output_path`: `set_extension` on a dotted title cuts it.
+fn free_variant(base: &Path, claimed: &HashSet<PathBuf>) -> PathBuf {
+    let dir = base.parent().unwrap_or(Path::new(""));
+    let stem = base.file_stem().unwrap_or_default();
+    let extension = base.extension().unwrap_or_default();
+
+    // Bounded rather than `loop`: a folder holding thousands of variants of
+    // one name is a bug somewhere else, and a runaway loop here would hang a
+    // worker thread with the lock held.
+    for n in 2..=9999 {
+        let mut name = stem.to_os_string();
+        name.push(format!(" ({n})"));
+        if !extension.is_empty() {
+            name.push(".");
+            name.push(extension);
+        }
+        let candidate = dir.join(name);
+        if !candidate.exists() && !claimed.contains(&candidate) {
+            return candidate;
+        }
+    }
+
+    // Nothing sensible is left; fall back to a name that cannot collide.
+    let mut name = stem.to_os_string();
+    name.push(format!("-{}", uuid::Uuid::new_v4()));
+    if !extension.is_empty() {
+        name.push(".");
+        name.push(extension);
+    }
+    dir.join(name)
+}
+
+fn name_of(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.display().to_string())
 }
 
 /// Runs `write` against a temporary sibling of `dest` and moves the result into

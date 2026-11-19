@@ -6,6 +6,8 @@
 //! say, rather than returning an empty queue that would read as "you have no
 //! files".
 
+use std::collections::BTreeMap;
+
 use serde_json::{json, Value};
 
 use super::{ok, str_arg, strings_arg};
@@ -13,14 +15,89 @@ use crate::commands::queue_commands::enqueue;
 use crate::error::{CapstoneError, Result};
 use crate::jobs;
 use crate::mcp::McpContext;
+use crate::models::FileStatus;
 use crate::state::AppState;
 use tauri::Manager;
 
-pub fn get(ctx: &McpContext) -> Result<Value> {
+/// The queue, as counts by default and as rows when asked.
+///
+/// Fifty files of full rows is a wall of JSON — every analysis reading, every
+/// result, every path — and the question being asked is almost always "how far
+/// along is it". So the default answer is the counts, and `files` is opt-in.
+/// `status` narrows the rows to one state, which is how an agent asks the
+/// other common question: which ones failed, and why.
+pub fn get(ctx: &McpContext, args: &Value) -> Result<Value> {
     let live = ctx.require_live("reading the queue")?;
     let state = live.app.state::<AppState>();
     let queue = state.queue.lock().clone();
-    Ok(json!({ "files": serde_json::to_value(queue)? }))
+
+    let wanted = super::opt_str(args, "status");
+    if let Some(name) = &wanted {
+        if parse_status(name).is_none() {
+            return Err(CapstoneError::Other(format!(
+                "`{name}` is not a status; use pending, analyzing, analyzed, processing, done or error"
+            )));
+        }
+    }
+    let wanted = wanted.and_then(|n| parse_status(&n));
+
+    let mut counts = BTreeMap::new();
+    for file in &queue {
+        *counts.entry(status_name(file.status)).or_insert(0usize) += 1;
+    }
+
+    let rows: Vec<&crate::models::QueuedFile> = queue
+        .iter()
+        .filter(|f| wanted.is_none_or(|w| f.status == w))
+        .collect();
+
+    let mut out = json!({
+        "total": queue.len(),
+        "counts": counts,
+        "matching": rows.len(),
+    });
+
+    // Errors are carried whatever the caller asked for: a run that has
+    // finished with three failures must not look finished-and-fine just
+    // because the summary was the cheap call.
+    let failures: Vec<Value> = queue
+        .iter()
+        .filter(|f| f.status == FileStatus::Error)
+        .map(|f| json!({ "fileId": f.id, "filename": f.filename, "error": f.error }))
+        .collect();
+    if !failures.is_empty() {
+        out["failures"] = json!(failures);
+    }
+
+    if super::bool_arg(args, "files", false) || wanted.is_some() {
+        out["files"] = serde_json::to_value(rows)?;
+    } else if !queue.is_empty() {
+        out["note"] = json!("counts only; pass files true, or a status, for the rows");
+    }
+    Ok(out)
+}
+
+fn status_name(status: FileStatus) -> &'static str {
+    match status {
+        FileStatus::Pending => "pending",
+        FileStatus::Analyzing => "analyzing",
+        FileStatus::Analyzed => "analyzed",
+        FileStatus::Processing => "processing",
+        FileStatus::Done => "done",
+        FileStatus::Error => "error",
+    }
+}
+
+fn parse_status(name: &str) -> Option<FileStatus> {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "pending" => Some(FileStatus::Pending),
+        "analyzing" => Some(FileStatus::Analyzing),
+        "analyzed" => Some(FileStatus::Analyzed),
+        "processing" => Some(FileStatus::Processing),
+        "done" => Some(FileStatus::Done),
+        "error" => Some(FileStatus::Error),
+        _ => None,
+    }
 }
 
 /// Queue files or folders, and start reading them.

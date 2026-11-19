@@ -14,6 +14,13 @@ export interface ProcessResult {
   outputPath: string;
   lufsBefore: number;
   lufsAfter: number;
+  /**
+   * True peak of the finished file, dBTP. Loudness is an average, so
+   * `lufsAfter` alone cannot say whether the master is over its ceiling.
+   */
+  truePeakAfterDb: number;
+  /** The limiter ceiling it was produced against, dBTP. */
+  ceilingDb: number;
   clipsRepaired: number;
   gainAppliedDb: number;
   pitchCorrectedCents: number;
@@ -29,6 +36,12 @@ export interface QueuedFile {
   /** Null until the file has been written out. */
   result: ProcessResult | null;
   error: string | null;
+  /**
+   * Something that happened which is not a failure: the output was skipped
+   * because one already existed, or renamed to avoid overwriting one. Absent
+   * on an ordinary row.
+   */
+  note?: string | null;
   /**
    * The folder this file was dropped in, or null when it was picked
    * individually. Only "Mirror structure of input folders" reads it — it is
