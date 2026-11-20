@@ -23,6 +23,9 @@ pub const TOOL_NAMES: &[&str] = &[
     "analyze_file",
     "start_processing",
     "cancel_processing",
+    "wait_for_queue",
+    "send_to_keystone",
+    "keystone_status",
     "launch_app",
 ];
 
@@ -46,6 +49,10 @@ fn tool(name: &str, description: &str, props: Value, required: &[&str]) -> Value
 
 fn boolean(description: &str) -> Value {
     json!({ "type": "boolean", "description": description })
+}
+
+fn integer(description: &str) -> Value {
+    json!({ "type": "integer", "description": description })
 }
 
 fn string(description: &str) -> Value {
@@ -115,7 +122,7 @@ pub fn tool_list() -> Value {
             "update_settings",
             "Change named output settings. Send only what changes, e.g. {\"format\": \"wav\"}. Setting activeTemplateId is checked against the templates that exist.",
             json!({
-                "fields": json!({ "type": "object", "description": "Field name to new value: outputLocation, outputDir, mirrorInputStructure, format, mp3Rate, maxCores, activeTemplateId, collisionPolicy (overwrite, skip or rename — what to do when a file is already at the destination; two files in one run that would collide are always renamed apart regardless)." })
+                "fields": json!({ "type": "object", "description": "Field name to new value: outputLocation, outputDir, mirrorInputStructure, format, mp3Rate, maxCores, activeTemplateId, collisionPolicy (overwrite, skip or rename — what to do when a file is already at the destination; two files in one run that would collide are always renamed apart regardless), keepTags (carry the source's artist, title and the rest into the output, default true), embedArtwork (default true: a matching image from artworkDir, one beside the source, or the source's own cover), artworkDir (a folder of covers named after the tracks)." })
             }),
             &["fields"],
         ),
@@ -161,6 +168,29 @@ pub fn tool_list() -> Value {
         tool(
             "cancel_processing",
             &format!("Stop a run. It stops at the next file boundary, so this is not a promise that nothing is being written right now.{NEEDS_APP}"),
+            json!({}),
+            &[],
+        ),
+        tool(
+            "wait_for_queue",
+            &format!("Wait until the run finishes, then answer with how it went: the counts, every failure with its reason, and the paths of the masters that were written. Use this instead of polling get_queue. Refuses if there is nothing to wait for, or if files are queued and no run has been started.{NEEDS_APP}"),
+            json!({
+                "timeoutSeconds": integer("How long to wait, 1 to 1800. Default 300. A timeout answers with what has finished so far rather than failing.")
+            }),
+            &[],
+        ),
+        tool(
+            "send_to_keystone",
+            &format!("Hand the masters this run wrote to Keystone, so the library points at them. With no arguments it sends every master written in this session. Pass relinkTrackId to point one existing Keystone track at one master instead, which keeps that track's rating, cues and analysis. If Keystone is not running nothing is sent and the paths come back, so the handoff can be made by hand; this never starts Keystone itself.{NEEDS_APP}"),
+            json!({
+                "paths": json!({ "type": "array", "items": { "type": "string" }, "description": "Specific files to send. Omit to send this run's masters." }),
+                "relinkTrackId": string("A Keystone track id to point at the one file being sent, rather than importing it as a new track.")
+            }),
+            &[],
+        ),
+        tool(
+            "keystone_status",
+            "Is Keystone running and ready to take a handoff? Cheap, and worth calling before promising one. Works with Capstone closed.",
             json!({}),
             &[],
         ),

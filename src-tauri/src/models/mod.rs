@@ -109,6 +109,16 @@ pub struct ProcessResult {
     /// `headroom_db` as the distance below full scale it actually means. Sent
     /// with the measurement so the two never have to be matched up by hand.
     pub ceiling_db: f64,
+    /// Whether the output carries the source's artist, title and the rest.
+    /// Reported rather than assumed: ALAC cannot hold tags at all, and a
+    /// source that had none has none to pass on.
+    #[serde(default)]
+    pub kept_tags: bool,
+    /// Where the embedded cover came from, or `None` when the output has
+    /// none. Worth saying which: "the artwork folder" and "the source file's
+    /// own tags" are different answers to "why is the cover wrong".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artwork_from: Option<String>,
     pub clips_repaired: u64,
     pub gain_applied_db: f64,
     pub pitch_corrected_cents: f64,
@@ -226,4 +236,21 @@ pub struct Settings {
     /// first launch after the update.
     #[serde(default)]
     pub collision_policy: CollisionPolicy,
+    /// Carry the source's artist, title, album and the rest into the output.
+    ///
+    /// On by default, and there is a real argument for not making it
+    /// optional at all: a master that comes back untagged has to be
+    /// identified by ear. It is a setting because a few people master
+    /// deliberately anonymous stems and would rather the output said nothing.
+    #[serde(default = "crate::settings::yes")]
+    pub keep_tags: bool,
+    /// Embed cover art: a matching image from `artwork_dir`, one sitting
+    /// beside the source, or the source's own embedded picture.
+    #[serde(default = "crate::settings::yes")]
+    pub embed_artwork: bool,
+    /// A folder of covers named after the tracks, as in
+    /// `Artwork/Vol. 2/Dom Dolla - Strangers.jpg`. `None` looks beside the
+    /// source file and inside it, which is all a normal library needs.
+    #[serde(default)]
+    pub artwork_dir: Option<String>,
 }

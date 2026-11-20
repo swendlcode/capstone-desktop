@@ -270,7 +270,19 @@ fn process_one(
         output::Destination::Write { path, note } => (path, note),
     };
 
-    let mut audio = crate::audio::decode::decode_to_f32(&source)?;
+    // `decode_with_tags` rather than `decode_to_f32`: the tags are read on
+    // the way past, which is the only moment they are free. Reopening the
+    // source after the encode to fetch them would be a second full parse of a
+    // file that has already been read once.
+    let (mut audio, source_tags) = crate::audio::decode::decode_with_tags(&source)?;
+    let artwork = if settings.embed_artwork {
+        crate::audio::encode::artwork::find(
+            &source,
+            settings.artwork_dir.as_deref().map(Path::new),
+        )
+    } else {
+        None
+    };
     let mut result = crate::audio::process::process(&mut audio, template)?;
     let spec = EncodeSpec {
         // No resampling: the file keeps the rate it arrived at. The format
@@ -285,12 +297,26 @@ fn process_one(
     // appears at the destination once it is complete, so a cancelled run or a
     // failed encode cannot leave a truncated track for the user to find in a
     // set weeks later.
+    let tags = if settings.keep_tags {
+        source_tags
+    } else {
+        crate::audio::decode::SourceTags::default()
+    };
     output::write_atomically(&dest, |temp| {
-        crate::audio::encode::encode(&audio, &spec, settings.format, temp)
+        crate::audio::encode::encode_with_tags(
+            &audio,
+            &spec,
+            settings.format,
+            temp,
+            &tags,
+            artwork.as_ref(),
+        )
     })?;
 
     // `process` never touches the filesystem, so it leaves this empty and the
     // path is filled in here, once there is actually a file at it.
     result.output_path = dest.to_string_lossy().to_string();
+    result.kept_tags = !tags.is_empty();
+    result.artwork_from = artwork.map(|a| a.source.as_str().to_string());
     Ok(Outcome::Processed { result, note })
 }

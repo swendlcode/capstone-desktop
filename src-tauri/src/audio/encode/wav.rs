@@ -10,11 +10,18 @@
 //! audio. Appending after `data` is legal RIFF that half the world ignores,
 //! and it would mean a WAV written by Capstone came back untagged the next time
 //! Capstone read it.
+//!
+//! Artwork cannot go in an INFO chunk — RIFF INFO is text fields and has no
+//! picture — so a cover is written as a second chunk, `id3 `, holding the same
+//! ID3v2 payload AIFF and MP3 carry. That chunk is what Serato, Mixed In Key
+//! and foobar2000 look in for a WAV's art, and it is ignored by anything that
+//! does not.
 
 use std::io::{Cursor, Seek, Write};
 use std::path::Path;
 
 use crate::audio::decode::SourceTags;
+use crate::audio::encode::artwork::Artwork;
 use crate::audio::encode::{dither, tags, EncodeSpec};
 use crate::audio::DecodedAudio;
 use crate::error::{CapstoneError, Result};
@@ -24,6 +31,7 @@ pub fn write(
     spec: &EncodeSpec,
     dest: &Path,
     source_tags: &SourceTags,
+    art: Option<&Artwork>,
 ) -> Result<()> {
     let format = match spec.bit_depth {
         16 | 24 => hound::SampleFormat::Int,
@@ -46,26 +54,46 @@ pub fn write(
         sample_format: format,
     };
 
-    match tags::riff_info_chunk(source_tags) {
+    let mut extra = Vec::new();
+    if let Some(chunk) = tags::riff_info_chunk(source_tags) {
+        extra.extend_from_slice(&chunk);
+    }
+    if let Some(chunk) = art.and_then(|a| id3_chunk(source_tags, Some(a))) {
+        extra.extend_from_slice(&chunk);
+    }
+
+    if extra.is_empty() {
         // Nothing to splice, so the samples stream straight to disk and the
         // file is never held in memory.
-        None => {
-            let mut writer = hound::WavWriter::create(dest, wav_spec)?;
-            write_samples(&mut writer, audio, spec.bit_depth)?;
-            writer.finalize()?;
-        }
-        Some(chunk) => {
-            let mut buffer = Cursor::new(Vec::new());
-            {
-                let mut writer = hound::WavWriter::new(&mut buffer, wav_spec)?;
-                write_samples(&mut writer, audio, spec.bit_depth)?;
-                writer.finalize()?;
-            }
-            let bytes = splice_before_data(buffer.into_inner(), &chunk)?;
-            std::fs::write(dest, bytes)?;
-        }
+        let mut writer = hound::WavWriter::create(dest, wav_spec)?;
+        write_samples(&mut writer, audio, spec.bit_depth)?;
+        writer.finalize()?;
+        return Ok(());
     }
+
+    let mut buffer = Cursor::new(Vec::new());
+    {
+        let mut writer = hound::WavWriter::new(&mut buffer, wav_spec)?;
+        write_samples(&mut writer, audio, spec.bit_depth)?;
+        writer.finalize()?;
+    }
+    let bytes = splice_before_data(buffer.into_inner(), &extra)?;
+    std::fs::write(dest, bytes)?;
     Ok(())
+}
+
+/// An `id3 ` chunk around the ID3v2 payload, padded to an even length as RIFF
+/// requires. The text goes in both this and the INFO chunk, which costs a few
+/// hundred bytes and means neither kind of reader has to understand the other.
+fn id3_chunk(source_tags: &SourceTags, art: Option<&Artwork>) -> Option<Vec<u8>> {
+    let payload = tags::id3v2(source_tags, art)?;
+    let mut chunk = b"id3 ".to_vec();
+    chunk.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+    chunk.extend_from_slice(&payload);
+    if payload.len() % 2 == 1 {
+        chunk.push(0);
+    }
+    Some(chunk)
 }
 
 fn write_samples<W: Write + Seek>(
@@ -158,7 +186,7 @@ mod tests {
         // keyed only on the pid had one of them deleting the file the other was
         // still reading.
         let path = std::env::temp_dir().join(format!("capstone-wav-{}.wav", uuid::Uuid::new_v4()));
-        write(&audio, &spec, &path, &tags).unwrap();
+        write(&audio, &spec, &path, &tags, None).unwrap();
         let bytes = std::fs::read(&path).unwrap();
         let _ = std::fs::remove_file(&path);
         bytes
@@ -206,5 +234,35 @@ mod tests {
     fn a_wav_with_no_data_chunk_is_refused() {
         let wav = b"RIFF\0\0\0\0WAVE".to_vec();
         assert!(splice_before_data(wav, b"LIST\0\0\0\0").is_err());
+    }
+
+    /// A cover lands in an `id3 ` chunk, ahead of the audio like everything
+    /// else: a reader that stops at `data` would otherwise never see it.
+    #[test]
+    fn artwork_lands_in_an_id3_chunk_ahead_of_the_audio() {
+        let art = Artwork {
+            mime: "image/jpeg".into(),
+            data: vec![0xFF, 0xD8, 0xFF, 0x11, 0x22, 0x33],
+            source: crate::audio::encode::artwork::ArtworkSource::Embedded,
+        };
+        let frames = vec![0.25f32; 1_001];
+        let audio = DecodedAudio::new(vec![frames.clone(), frames], 44_100);
+        let spec = EncodeSpec {
+            sample_rate: 44_100,
+            channels: 2,
+            bit_depth: 16,
+            mp3_rate: Mp3Rate::Cbr320,
+        };
+        let path = std::env::temp_dir().join(format!("capstone-wav-{}.wav", uuid::Uuid::new_v4()));
+        write(&audio, &spec, &path, &SourceTags::default(), Some(&art)).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        let id3 = find(&bytes, b"id3 ").expect("no id3 chunk");
+        let data = find(&bytes, b"data").expect("no data chunk");
+        assert!(id3 < data, "the artwork is behind the audio");
+        assert!(find(&bytes, b"APIC").is_some_and(|at| at < data));
+        let stated = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+        assert_eq!(stated, bytes.len() - 8, "the RIFF length was not corrected");
     }
 }

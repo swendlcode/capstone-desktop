@@ -6,9 +6,11 @@ use super::McpContext;
 use crate::error::{CapstoneError, Result};
 
 mod app;
-mod queue;
+mod keystone;
+pub(super) mod queue;
 mod settings;
 mod templates;
+mod wait;
 
 pub fn dispatch(ctx: &McpContext, tool: &str, args: &Value) -> Result<Value> {
     match tool {
@@ -34,6 +36,9 @@ pub fn dispatch(ctx: &McpContext, tool: &str, args: &Value) -> Result<Value> {
         "analyze_file" => queue::analyze(ctx, args),
         "start_processing" => queue::start(ctx),
         "cancel_processing" => queue::cancel(ctx),
+        "wait_for_queue" => wait::wait(ctx, args),
+        "send_to_keystone" => keystone::send(ctx, args),
+        "keystone_status" => keystone::status(ctx, args),
 
         // Starting the app, for the tools above that need it.
         "launch_app" => app::launch(ctx, args),
@@ -65,6 +70,11 @@ pub fn opt_str(args: &Value, key: &str) -> Option<String> {
         .and_then(Value::as_str)
         .map(str::to_owned)
         .filter(|s| !s.trim().is_empty())
+}
+
+pub fn opt_u64(args: &Value, key: &str) -> Option<u64> {
+    let v = args.get(key)?;
+    v.as_u64().or_else(|| v.as_str()?.trim().parse().ok())
 }
 
 pub fn bool_arg(args: &Value, key: &str, default: bool) -> bool {

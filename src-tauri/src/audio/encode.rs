@@ -11,14 +11,17 @@
 //!   when the buffer is at another rate it goes through `resample` first. MP3
 //!   also has only nine legal rates, so a 96 kHz master cannot be handed to it
 //!   untouched.
-//! * **Tags.** `encode_with_tags` carries the source's tags through. These are
-//!   DJ libraries: a file that comes back without its artist and title has to
-//!   be identified by ear, which is worse than not having been processed. MP3,
-//!   WAV, AIFF, FLAC and MP3 all keep them, each in its own form. ALAC does
-//!   not, for the reason in that module.
+//! * **Tags and artwork.** `encode_with_tags` carries the source's tags and
+//!   its cover through. These are DJ libraries: a file that comes back
+//!   without its artist, title and cover has to be identified by ear, which
+//!   is worse than not having been processed. WAV, AIFF, FLAC and MP3 keep
+//!   the text, each in its own form; AIFF, WAV and MP3 carry the picture in
+//!   an ID3 `APIC` frame and FLAC in a `METADATA_BLOCK_PICTURE`. ALAC keeps
+//!   neither, for the reason in that module.
 
 pub mod aiff;
 pub mod alac;
+pub mod artwork;
 pub mod caf;
 pub mod dither;
 pub mod flac;
@@ -34,6 +37,7 @@ mod tests;
 use std::path::Path;
 
 use crate::audio::decode::SourceTags;
+use crate::audio::encode::artwork::Artwork;
 use crate::audio::DecodedAudio;
 use crate::error::{CapstoneError, Result};
 use crate::models::{Mp3Rate, OutputFormat};
@@ -77,7 +81,7 @@ pub fn encode(
     format: OutputFormat,
     dest: &Path,
 ) -> Result<()> {
-    encode_with_tags(audio, spec, format, dest, &SourceTags::default())
+    encode_with_tags(audio, spec, format, dest, &SourceTags::default(), None)
 }
 
 pub fn encode_with_tags(
@@ -86,6 +90,7 @@ pub fn encode_with_tags(
     format: OutputFormat,
     dest: &Path,
     source_tags: &SourceTags,
+    art: Option<&Artwork>,
 ) -> Result<()> {
     if audio.is_empty() {
         return Err(CapstoneError::Encode(
@@ -108,12 +113,12 @@ pub fn encode_with_tags(
     let audio = converted.as_ref().unwrap_or(audio);
 
     match format {
-        OutputFormat::Wav => wav::write(audio, spec, dest, source_tags),
-        OutputFormat::Aiff => aiff::write(audio, spec, dest, source_tags),
-        OutputFormat::Flac => flac::write(audio, spec, dest, source_tags),
+        OutputFormat::Wav => wav::write(audio, spec, dest, source_tags, art),
+        OutputFormat::Aiff => aiff::write(audio, spec, dest, source_tags, art),
+        OutputFormat::Flac => flac::write(audio, spec, dest, source_tags, art),
         OutputFormat::Alac => alac::write(audio, dest),
         #[cfg(feature = "mp3")]
-        OutputFormat::Mp3 => mp3::write(audio, spec, dest, source_tags),
+        OutputFormat::Mp3 => mp3::write(audio, spec, dest, source_tags, art),
         // rusty_mp3 is the only permissively licensed MP3 encoder and it is
         // very new, so MP3 sits behind a Cargo feature. The refusal lives here
         // rather than at the UI, so it cannot be bypassed by a settings file

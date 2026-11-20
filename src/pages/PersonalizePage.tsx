@@ -1,6 +1,7 @@
 import { PersonalizeRail } from '../components/personalize/PersonalizeRail';
 import { OutputLocationPane } from '../components/personalize/OutputLocationPane';
 import { OutputFormatPane } from '../components/personalize/OutputFormatPane';
+import { TagsPane } from '../components/personalize/TagsPane';
 import { ProcessorLoadPane } from '../components/personalize/ProcessorLoadPane';
 import { InterfaceScalePane } from '../components/personalize/InterfaceScalePane';
 import { useSettings } from '../hooks/useSettings';
@@ -29,6 +30,7 @@ export function PersonalizePage() {
         <>
           {section === 'location' && <OutputLocationPane settings={settings} />}
           {section === 'format' && <OutputFormatPane settings={settings} />}
+          {section === 'tags' && <TagsPane settings={settings} />}
           {section === 'cores' && <ProcessorLoadPane settings={settings} />}
           {section === 'interface' && <InterfaceScalePane />}
         </>

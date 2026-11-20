@@ -27,4 +27,16 @@ export interface Settings {
   activeTemplateId: string;
   /** What to do when the destination already exists. */
   collisionPolicy: CollisionPolicy;
+  /** Carry the source's artist, title, album and the rest into the output. */
+  keepTags: boolean;
+  /**
+   * Embed cover art: a matching image from `artworkDir`, one sitting beside
+   * the source file, or the source's own embedded picture.
+   */
+  embedArtwork: boolean;
+  /**
+   * A folder of covers named after the tracks. Null looks beside the source
+   * file and inside it, which is all a normal library needs.
+   */
+  artworkDir: string | null;
 }

@@ -25,8 +25,21 @@ impl Default for Settings {
             max_cores: default_max_cores(),
             active_template_id: crate::templates::FESTIVAL_ID.to_string(),
             collision_policy: CollisionPolicy::default(),
+            keep_tags: true,
+            embed_artwork: true,
+            artwork_dir: None,
         }
     }
+}
+
+/// `true`, for `serde(default = ...)` on the two carry-through switches.
+///
+/// A bare `#[serde(default)]` on a `bool` is `false`, which would mean an
+/// older settings.json — every settings.json that exists today — read as
+/// "throw the tags away". The default has to match the struct's own default,
+/// not the type's.
+pub fn yes() -> bool {
+    true
 }
 
 /// All of them, which is what the Processor Load pane shows as the default.

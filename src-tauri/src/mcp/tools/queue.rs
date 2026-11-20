@@ -19,6 +19,7 @@ use crate::models::FileStatus;
 use crate::state::AppState;
 use tauri::Manager;
 
+
 /// The queue, as counts by default and as rows when asked.
 ///
 /// Fifty files of full rows is a wall of JSON — every analysis reading, every
@@ -77,7 +78,7 @@ pub fn get(ctx: &McpContext, args: &Value) -> Result<Value> {
     Ok(out)
 }
 
-fn status_name(status: FileStatus) -> &'static str {
+pub(super) fn status_name(status: FileStatus) -> &'static str {
     match status {
         FileStatus::Pending => "pending",
         FileStatus::Analyzing => "analyzing",

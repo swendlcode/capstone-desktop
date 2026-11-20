@@ -12,6 +12,7 @@ use flacenc::component::{BitRepr, MetadataBlockData};
 use flacenc::error::Verify;
 
 use crate::audio::decode::SourceTags;
+use crate::audio::encode::artwork::Artwork;
 use crate::audio::encode::{dither, fix_flac_streaminfo, tags, EncodeSpec};
 use crate::audio::DecodedAudio;
 use crate::error::{CapstoneError, Result};
@@ -21,11 +22,17 @@ use crate::error::{CapstoneError, Result};
 /// build either way.
 const VORBIS_COMMENT_BLOCK: u8 = 4;
 
+/// And the picture block, which is a separate block rather than an entry in
+/// the comment — unlike Vorbis proper, where a picture is a base64 comment
+/// value. FLAC has its own block type for it.
+const PICTURE_BLOCK: u8 = 6;
+
 pub fn write(
     audio: &DecodedAudio,
     spec: &EncodeSpec,
     dest: &Path,
     source_tags: &SourceTags,
+    art: Option<&Artwork>,
 ) -> Result<()> {
     let interleaved = audio.to_interleaved();
     let samples: Vec<i32> = match spec.bit_depth {
@@ -86,6 +93,11 @@ pub fn write(
     if let Some(comment) = tags::vorbis_comment(source_tags) {
         let block = MetadataBlockData::new_unknown(VORBIS_COMMENT_BLOCK, &comment)
             .map_err(|e| CapstoneError::Encode(format!("flac tags: {:?}", e)))?;
+        stream.add_metadata_block(block);
+    }
+    if let Some(art) = art {
+        let block = MetadataBlockData::new_unknown(PICTURE_BLOCK, &tags::flac_picture(art))
+            .map_err(|e| CapstoneError::Encode(format!("flac artwork: {:?}", e)))?;
         stream.add_metadata_block(block);
     }
 

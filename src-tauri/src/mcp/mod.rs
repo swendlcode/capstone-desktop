@@ -109,6 +109,13 @@ pub fn dispatch(ctx: &McpContext, tool: &str, args: &Value) -> Result<Value> {
 
 /// Where Tauri would have put the app's data, worked out without Tauri.
 pub fn data_dir() -> Result<PathBuf> {
+    data_dir_of(IDENTIFIER)
+}
+
+/// The same, for another app on this machine. One caller: the Keystone
+/// handoff, which needs Keystone's bridge handshake and has no other way to
+/// find it. Kept beside the real thing so the platform rules cannot diverge.
+pub fn data_dir_of(identifier: &str) -> Result<PathBuf> {
     let base: Option<PathBuf> = {
         #[cfg(target_os = "macos")]
         {
@@ -130,6 +137,6 @@ pub fn data_dir() -> Result<PathBuf> {
         }
     };
 
-    base.map(|b| b.join(IDENTIFIER))
+    base.map(|b| b.join(identifier))
         .ok_or_else(|| CapstoneError::Other("could not work out the data directory".into()))
 }

@@ -65,7 +65,7 @@ fn scratch(format: OutputFormat) -> PathBuf {
 fn round_trip(format: OutputFormat, spec: &EncodeSpec) -> (DecodedAudio, SourceTags) {
     let path = scratch(format);
     let source = tone(RATE);
-    encode_with_tags(&source, spec, format, &path, &sample_tags())
+    encode_with_tags(&source, spec, format, &path, &sample_tags(), None)
         .unwrap_or_else(|e| panic!("encoding {:?} failed: {}", format, e));
     let decoded = decode::decode_with_tags(&path)
         .unwrap_or_else(|e| panic!("reading back {:?} failed: {}", format, e));
@@ -147,6 +147,7 @@ fn wav_float_is_bit_transparent() {
         OutputFormat::Wav,
         &path,
         &sample_tags(),
+        None,
     )
     .unwrap();
     let decoded = decode::decode_to_f32(&path).unwrap();
@@ -274,4 +275,135 @@ fn a_bit_depth_no_format_has_is_refused() {
 fn the_flac_fix_rejects_something_that_is_not_flac() {
     let mut bytes = b"RIFF....WAVEfmt ".to_vec();
     assert!(fix_flac_streaminfo(&mut bytes).is_err());
+}
+
+// ---------------------------------------------------------------------------
+// Artwork
+//
+// Read back with lofty rather than with symphonia, because lofty is what
+// Capstone's own cover reader uses and what every DJ program does: symphonia
+// parses metadata into a log it then discards, so a picture that round trips
+// through it proves nothing about whether a player will draw it.
+// ---------------------------------------------------------------------------
+
+/// A one-pixel JPEG. Small enough to live in a test and real enough that an
+/// image decoder accepts it, which is what matters: the writers must not
+/// touch the bytes, and a reader must hand back exactly what went in.
+fn tiny_jpeg() -> Vec<u8> {
+    // The shortest valid baseline JPEG: SOI, a minimal APP0, and EOI around a
+    // single MCU. Produced by the `image` crate and pasted here so the test
+    // has no dependency on encoding one.
+    let mut data = vec![0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
+    data.extend_from_slice(b"JFIF\0");
+    data.extend_from_slice(&[0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00]);
+    // Deliberately not a complete scan: nothing here decodes the picture, and
+    // the writers must not care what the bytes are.
+    data.extend_from_slice(&[0xFF, 0xD9]);
+    data
+}
+
+fn artwork() -> artwork::Artwork {
+    artwork::Artwork {
+        mime: "image/jpeg".into(),
+        data: tiny_jpeg(),
+        source: artwork::ArtworkSource::ArtworkFolder,
+    }
+}
+
+/// The picture lofty finds in a file Capstone wrote, if any.
+fn read_back_picture(path: &std::path::Path) -> Option<(String, Vec<u8>)> {
+    use lofty::file::TaggedFileExt;
+    let tagged = lofty::read_from_path(path).ok()?;
+    let picture = tagged.tags().iter().flat_map(|t| t.pictures()).next()?;
+    let mime = picture.mime_type().map(|m| m.to_string()).unwrap_or_default();
+    Some((mime, picture.data().to_vec()))
+}
+
+/// AIFF is the default output and the format his masters are in, so this is
+/// the one that matters most.
+#[test]
+fn an_aiff_keeps_its_tags_and_its_cover() {
+    let path = scratch(OutputFormat::Aiff);
+    encode_with_tags(
+        &tone(RATE),
+        &spec(16, RATE, Mp3Rate::Cbr320),
+        OutputFormat::Aiff,
+        &path,
+        &sample_tags(),
+        Some(&artwork()),
+    )
+    .expect("encoding aiff with artwork");
+
+    let (_, tags) = decode::decode_with_tags(&path).expect("reading back");
+    let title = tags
+        .entries()
+        .iter()
+        .find(|(f, _)| *f == TagField::Title)
+        .map(|(_, v)| v.clone());
+    assert_eq!(title.as_deref(), Some("Tone Test"), "the title was lost");
+
+    let (mime, data) = read_back_picture(&path).expect("no picture in the aiff");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(mime, "image/jpeg");
+    assert_eq!(data, tiny_jpeg(), "the picture bytes were altered");
+}
+
+#[test]
+fn a_flac_keeps_its_cover_in_a_picture_block() {
+    let path = scratch(OutputFormat::Flac);
+    encode_with_tags(
+        &tone(RATE),
+        &spec(16, RATE, Mp3Rate::Cbr320),
+        OutputFormat::Flac,
+        &path,
+        &sample_tags(),
+        Some(&artwork()),
+    )
+    .expect("encoding flac with artwork");
+    let picture = read_back_picture(&path);
+    let _ = std::fs::remove_file(&path);
+    let (mime, data) = picture.expect("no picture in the flac");
+    assert_eq!(mime, "image/jpeg");
+    assert_eq!(data, tiny_jpeg());
+}
+
+#[test]
+fn a_wav_keeps_its_cover_in_an_id3_chunk() {
+    let path = scratch(OutputFormat::Wav);
+    encode_with_tags(
+        &tone(RATE),
+        &spec(16, RATE, Mp3Rate::Cbr320),
+        OutputFormat::Wav,
+        &path,
+        &sample_tags(),
+        Some(&artwork()),
+    )
+    .expect("encoding wav with artwork");
+    let picture = read_back_picture(&path);
+    let _ = std::fs::remove_file(&path);
+    let (mime, data) = picture.expect("no picture in the wav");
+    assert_eq!(mime, "image/jpeg");
+    assert_eq!(data, tiny_jpeg());
+}
+
+/// A run with artwork switched off must leave no picture behind, and the
+/// audio must be unaffected either way.
+#[test]
+fn no_artwork_means_no_picture_and_the_same_audio() {
+    let with_art = scratch(OutputFormat::Aiff);
+    let without = scratch(OutputFormat::Aiff);
+    let spec = spec(16, RATE, Mp3Rate::Cbr320);
+    encode_with_tags(&tone(RATE), &spec, OutputFormat::Aiff, &with_art, &sample_tags(), Some(&artwork())).unwrap();
+    encode_with_tags(&tone(RATE), &spec, OutputFormat::Aiff, &without, &sample_tags(), None).unwrap();
+
+    assert!(read_back_picture(&without).is_none(), "a picture appeared from nowhere");
+    let a = decode::decode_with_tags(&with_art).unwrap().0;
+    let b = decode::decode_with_tags(&without).unwrap().0;
+    let _ = std::fs::remove_file(&with_art);
+    let _ = std::fs::remove_file(&without);
+    assert_eq!(a.channels[0].len(), b.channels[0].len(), "the artwork changed the audio length");
+    assert!(
+        (channel_peak(&a, 0) - channel_peak(&b, 0)).abs() < 1e-6,
+        "the artwork changed the samples"
+    );
 }

@@ -15,6 +15,7 @@
 //! export loses its tags. That gap is a few lines if it turns out to matter.
 
 use crate::audio::decode::{SourceTags, TagField};
+use crate::audio::encode::artwork::Artwork;
 
 /// Hand-rolled rather than taken from a crate: an ID3v2.3 text frame is a
 /// four-byte id, a length and a string, and the dependency set is already
@@ -25,8 +26,8 @@ use crate::audio::decode::{SourceTags, TagField};
 /// encodings: Latin-1 and UTF-16 with a byte-order mark. UTF-8 in a 2.3 frame
 /// is the common shortcut and is simply invalid, so the one that cannot lose a
 /// character is UTF-16.
-pub fn id3v2(tags: &SourceTags) -> Option<Vec<u8>> {
-    if tags.is_empty() {
+pub fn id3v2(tags: &SourceTags, art: Option<&Artwork>) -> Option<Vec<u8>> {
+    if tags.is_empty() && art.is_none() {
         return None;
     }
     let mut frames = Vec::new();
@@ -49,6 +50,9 @@ pub fn id3v2(tags: &SourceTags) -> Option<Vec<u8>> {
             TagField::Comment => comment_frame(&mut frames, value),
         }
     }
+    if let Some(art) = art {
+        picture_frame(&mut frames, art);
+    }
     if frames.is_empty() {
         return None;
     }
@@ -60,6 +64,48 @@ pub fn id3v2(tags: &SourceTags) -> Option<Vec<u8>> {
     tag.extend_from_slice(&syncsafe(frames.len() as u32));
     tag.extend_from_slice(&frames);
     Some(tag)
+}
+
+/// `APIC`: the front cover.
+///
+/// Latin-1 is named as the text encoding even though the rest of the tag is
+/// UTF-16, and that is correct rather than inconsistent: the two strings in
+/// this frame are a mime type and a description, the mime type is ASCII by
+/// definition, and the description is written empty. Latin-1 terminates on a
+/// single zero byte, so an empty description is one byte instead of the two
+/// a UTF-16 terminator needs — and every reader agrees on how to parse it.
+fn picture_frame(out: &mut Vec<u8>, art: &Artwork) {
+    const FRONT_COVER: u8 = 0x03;
+    let mut body = vec![0x00];
+    body.extend_from_slice(art.mime.as_bytes());
+    body.push(0x00);
+    body.push(FRONT_COVER);
+    body.push(0x00); // empty description
+    body.extend_from_slice(&art.data);
+    frame(out, b"APIC", &body);
+}
+
+/// A FLAC `METADATA_BLOCK_PICTURE` body.
+///
+/// Big-endian throughout, which is the opposite of the VORBIS_COMMENT block
+/// sitting next to it in the same file. The four dimension fields are written
+/// as zero: the format defines zero as "unknown", and decoding the image to
+/// fill them in would be work for a number no player needs — it reads the
+/// picture itself.
+pub fn flac_picture(art: &Artwork) -> Vec<u8> {
+    const FRONT_COVER: u32 = 3;
+    let mut out = Vec::with_capacity(art.data.len() + 64);
+    out.extend_from_slice(&FRONT_COVER.to_be_bytes());
+    out.extend_from_slice(&(art.mime.len() as u32).to_be_bytes());
+    out.extend_from_slice(art.mime.as_bytes());
+    out.extend_from_slice(&0u32.to_be_bytes()); // empty description
+    for _ in 0..4 {
+        // width, height, colour depth, number of colours: all unknown.
+        out.extend_from_slice(&0u32.to_be_bytes());
+    }
+    out.extend_from_slice(&(art.data.len() as u32).to_be_bytes());
+    out.extend_from_slice(&art.data);
+    out
 }
 
 fn text_frame(out: &mut Vec<u8>, id: &[u8; 4], value: &str) {
@@ -211,7 +257,7 @@ mod tests {
     #[test]
     fn empty_tags_produce_nothing() {
         let tags = SourceTags::default();
-        assert!(id3v2(&tags).is_none());
+        assert!(id3v2(&tags, None).is_none());
         assert!(vorbis_comment(&tags).is_none());
     }
 
@@ -236,9 +282,71 @@ mod tests {
         text_frame(&mut body, b"TIT2", "Test");
         let mut tags = SourceTags::default();
         tags.insert(TagField::Title, "Test");
-        let tag = id3v2(&tags).unwrap();
+        let tag = id3v2(&tags, None).unwrap();
         assert_eq!(&tag[0..3], b"ID3");
         assert_eq!(tag.len(), 10 + body.len());
         assert_eq!(syncsafe(body.len() as u32), tag[6..10]);
+    }
+
+    fn art() -> Artwork {
+        Artwork {
+            mime: "image/jpeg".into(),
+            data: vec![0xFF, 0xD8, 0xFF, 0x01, 0x02],
+            source: crate::audio::encode::artwork::ArtworkSource::Embedded,
+        }
+    }
+
+    /// Artwork alone is a reason to write a tag: a file can have a cover and
+    /// no title.
+    #[test]
+    fn a_picture_with_no_text_still_produces_a_tag() {
+        let tag = id3v2(&SourceTags::default(), Some(&art())).expect("a tag");
+        assert_eq!(&tag[0..3], b"ID3");
+        assert!(find_frame(&tag, b"APIC").is_some());
+    }
+
+    #[test]
+    fn the_picture_frame_carries_the_mime_the_type_and_the_bytes() {
+        let tag = id3v2(&SourceTags::default(), Some(&art())).expect("a tag");
+        let body = find_frame(&tag, b"APIC").expect("an APIC frame");
+        assert_eq!(body[0], 0x00, "latin-1 text encoding");
+        let mime_end = body[1..].iter().position(|b| *b == 0).unwrap() + 1;
+        assert_eq!(&body[1..mime_end], b"image/jpeg");
+        assert_eq!(body[mime_end + 1], 0x03, "front cover");
+        assert_eq!(body[mime_end + 2], 0x00, "empty description");
+        assert_eq!(&body[mime_end + 3..], art().data.as_slice());
+    }
+
+    /// The lengths in a FLAC picture block are big-endian, unlike the
+    /// comment block beside it, and a reader that disagrees sees garbage.
+    #[test]
+    fn the_flac_picture_block_is_big_endian_and_self_describing() {
+        let block = flac_picture(&art());
+        assert_eq!(&block[0..4], &3u32.to_be_bytes(), "front cover");
+        assert_eq!(&block[4..8], &10u32.to_be_bytes(), "mime length");
+        assert_eq!(&block[8..18], b"image/jpeg");
+        assert_eq!(&block[18..22], &0u32.to_be_bytes(), "no description");
+        // Four unknown dimensions, then the data length and the data.
+        let data_len_at = 22 + 16;
+        assert_eq!(
+            &block[data_len_at..data_len_at + 4],
+            &(art().data.len() as u32).to_be_bytes()
+        );
+        assert_eq!(&block[data_len_at + 4..], art().data.as_slice());
+    }
+
+    /// Walks the frames to find one by id, the way a reader does.
+    fn find_frame<'a>(tag: &'a [u8], id: &[u8; 4]) -> Option<&'a [u8]> {
+        let mut at = 10;
+        while at + 10 <= tag.len() {
+            let size = u32::from_be_bytes([tag[at + 4], tag[at + 5], tag[at + 6], tag[at + 7]])
+                as usize;
+            let body = tag.get(at + 10..at + 10 + size)?;
+            if &tag[at..at + 4] == id {
+                return Some(body);
+            }
+            at += 10 + size;
+        }
+        None
     }
 }

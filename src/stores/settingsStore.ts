@@ -1,14 +1,22 @@
 import { create } from 'zustand';
 
 /** The left rail of the Personalize tab. */
-export type PersonalizeSection = 'location' | 'format' | 'cores' | 'interface';
+export type PersonalizeSection = 'location' | 'format' | 'tags' | 'cores' | 'interface';
 
 const SECTION_KEY = 'capstone:personalizeSection';
 
 function loadSection(): PersonalizeSection {
   try {
     const v = localStorage.getItem(SECTION_KEY);
-    if (v === 'location' || v === 'format' || v === 'cores' || v === 'interface') return v;
+    if (
+      v === 'location' ||
+      v === 'format' ||
+      v === 'tags' ||
+      v === 'cores' ||
+      v === 'interface'
+    ) {
+      return v;
+    }
   } catch {
     /* private mode or blocked site data */
   }

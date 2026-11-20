@@ -1,13 +1,15 @@
 //! AIFF, through aifc, which reads and writes both AIFF and AIFF-C.
 //!
-//! Tags survive here: AIFF carries an `ID3 ` chunk, which is the same ID3v2
-//! payload the MP3 path writes, so one serialiser covers both.
+//! Tags and artwork survive here: AIFF carries an `ID3 ` chunk, which is the
+//! same ID3v2 payload the MP3 path writes — cover art included, as an `APIC`
+//! frame — so one serialiser covers both.
 
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
 
 use crate::audio::decode::SourceTags;
+use crate::audio::encode::artwork::Artwork;
 use crate::audio::encode::{dither, tags, EncodeSpec};
 use crate::audio::DecodedAudio;
 use crate::error::{CapstoneError, Result};
@@ -17,6 +19,7 @@ pub fn write(
     spec: &EncodeSpec,
     dest: &Path,
     source_tags: &SourceTags,
+    art: Option<&Artwork>,
 ) -> Result<()> {
     // Plain AIFF accepts only signed big-endian integers. Float samples would
     // force AIFF-C, which some older DJ software still will not open, so a
@@ -52,7 +55,7 @@ pub fn write(
     // After the samples, before finalize: an ID3 chunk at the end of the file
     // is where tag editors expect it, because it can then be rewritten without
     // moving the audio.
-    if let Some(id3) = tags::id3v2(source_tags) {
+    if let Some(id3) = tags::id3v2(source_tags, art) {
         writer.write_chunk_id3(&id3)?;
     }
 

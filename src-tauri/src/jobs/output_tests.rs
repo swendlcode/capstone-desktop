@@ -16,6 +16,9 @@ fn settings(location: OutputLocation, dir: Option<&str>, mirror: bool) -> Settin
         max_cores: 1,
         active_template_id: crate::templates::FESTIVAL_ID.to_string(),
         collision_policy: CollisionPolicy::Overwrite,
+        keep_tags: true,
+        embed_artwork: false,
+        artwork_dir: None,
     }
 }
 

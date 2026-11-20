@@ -923,10 +923,47 @@ for. The measurement is free — `analyze::loudness` reads integrated loudness
 and true peak in the same meter pass, which is the pass that was already being
 taken to read the loudness back.
 
+## What rides through the chain besides the audio
+
+A master that comes back without its artist, title and cover has to be
+identified by ear, which in a DJ library is worse than not having been
+processed at all. So the tags and the picture are carried, and the run reads
+them on the way past: `process_one` decodes with `decode_with_tags` rather
+than `decode_to_f32`, because reopening the source afterwards to fetch them
+would be a second full parse of a file already read once.
+
+Where a cover comes from, in order: a matching image in the configured
+**artwork folder**, an image **beside the source** with the same stem, then
+the source's **own embedded picture**. The first exists because downloaded
+tracks often carry no art at all and the covers were collected separately.
+The stem is matched **exactly** — a near match puts one track's cover on
+another, which is worse than no cover, since the art is what identifies a
+record at a glance.
+
+Three things worth knowing about the writing:
+
+- The extension is **appended** to the stem when looking for an image, never
+  set with `set_extension` — the same bug as the output namer, in a second
+  place: `Fred again..` loses its tail otherwise.
+- The mime type is **sniffed from the bytes**, not taken from the extension or
+  the source tag's own claim. Plenty of taggers write `image/jpg`, an empty
+  mime, or none.
+- AIFF, WAV and MP3 carry the picture in an ID3 `APIC` frame, FLAC in a
+  `METADATA_BLOCK_PICTURE`. WAV needs a second chunk for it — RIFF INFO is
+  text fields and has no picture — so an `id3 ` chunk goes in ahead of
+  `data`, which is where Serato and Mixed In Key look. ALAC/CAF carries
+  neither tags nor art, as that module already explained.
+
+`keep_tags` and `embed_artwork` both default **on**, and both carry
+`#[serde(default = "crate::settings::yes")]`. A bare `#[serde(default)]` on a
+`bool` is `false`, which would mean every settings.json that exists today read
+as "throw the tags away".
+
+
 ## MCP server (agent access)
 
 `capstone-mcp` is a second binary in the same crate (`src-tauri/src/bin/mcp.rs`)
-exposing 16 tools over MCP stdio. Register it like any server:
+exposing the app as MCP tools over stdio. Register it like any server:
 
 ```json
 { "mcpServers": { "capstone": { "command": "<path>/capstone-mcp" } } }
@@ -971,6 +1008,21 @@ than "the app is not running", which is the worse of the two lies.
   `files: true` or a `status` filter opts into the rows, and failures are
   carried whatever was asked for — a run that finished with three errors must
   not read as finished-and-fine just because the cheap call was made.
+- **`wait_for_queue` exists so nothing polls.** `start_processing` returns at
+  once — the command must not hold the IPC bridge for the length of a batch —
+  which left an agent calling `get_queue` every few seconds to learn something
+  the app knew the moment it happened. It waits on the **queue's own state**
+  rather than the run flag, because a `Pending` row left by a cancel must not
+  read as a batch still going. Two cases are refused rather than waited
+  through: nothing to wait for, and work queued with no run started.
+- **`send_to_keystone` hands the masters over and never launches anything.**
+  What it knows about Keystone is the smallest possible thing: where its data
+  directory is, and that a running Keystone leaves a loopback handshake in it.
+  Everything else goes through Keystone's own `import_tracks` and
+  `relink_track`, so the behaviour stays Keystone's and stays correct when
+  Keystone changes it. With Keystone closed it answers with the paths and the
+  call to make instead — a tool that started another application as a side
+  effect of a handoff would be doing something nobody asked for.
 - **`launch_app`** starts the app and waits for its bridge, so an agent can
   satisfy the live-only tools itself. Every one of their descriptions names
   it: "needs the app" is only half an instruction. The app is found from

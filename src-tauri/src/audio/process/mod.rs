@@ -84,6 +84,11 @@ pub fn process(audio: &mut DecodedAudio, template: &Template) -> Result<ProcessR
         lufs_after,
         true_peak_after_db,
         ceiling_db: -template.headroom_db,
+        // Filled in by the job runner, which is the only layer that knows
+        // what was written: `process` never touches the filesystem and never
+        // sees the tags or the cover.
+        kept_tags: false,
+        artwork_from: None,
         clips_repaired,
         gain_applied_db,
         pitch_corrected_cents,

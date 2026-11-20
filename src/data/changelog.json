@@ -1,4 +1,15 @@
 {
+  "0.2.6": {
+    "date": "2026-11-19",
+    "title": "Masters keep their tags and their cover",
+    "summary": "The artist, title and artwork now ride through the mastering chain, and a batch can say when it has finished.",
+    "highlights": [
+      "Masters carry the source's tags and its cover art. A folder of covers named after the tracks can be used instead.",
+      "A new Tags & Artwork section in Personalize controls both.",
+      "A batch can be waited on rather than polled, and reports where every master landed.",
+      "Finished masters can be handed to Keystone, which imports them or points an existing track at them."
+    ]
+  },
   "0.2.5": {
     "date": "2026-11-19",
     "title": "Output files keep their names",

@@ -58,3 +58,21 @@ export function usePickOutputDir() {
     },
   });
 }
+
+/**
+ * The same picker for the artwork folder.
+ *
+ * Separate from `usePickOutputDir` rather than parameterised: that one also
+ * switches `outputLocation` to `specific`, which is right for an output
+ * folder and wrong for anything else.
+ */
+export function usePickArtworkDir() {
+  const { settings, patch } = useSettingsPatch();
+  return useMutation({
+    mutationFn: () => capstoneService.pickFolder(),
+    onSuccess: (dir) => {
+      if (!dir || !settings) return;
+      patch({ artworkDir: dir, embedArtwork: true });
+    },
+  });
+}

@@ -1,10 +1,11 @@
-import { Cpu, Folder2, Maximize4, MusicSquare } from '../ui/icons';
+import { Cpu, Folder2, Maximize4, MusicSquare, Tag } from '../ui/icons';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { PersonalizeSection } from '../../stores/settingsStore';
 
 const SECTIONS: Array<{ id: PersonalizeSection; label: string; icon: typeof Cpu }> = [
   { id: 'location', label: 'Output Location', icon: Folder2 },
   { id: 'format', label: 'Output File Format', icon: MusicSquare },
+  { id: 'tags', label: 'Tags & Artwork', icon: Tag },
   { id: 'cores', label: 'Processor Load', icon: Cpu },
   { id: 'interface', label: 'Interface Scale', icon: Maximize4 },
 ];

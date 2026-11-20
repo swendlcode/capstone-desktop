@@ -12,6 +12,7 @@ use std::path::Path;
 use rusty_mp3::{Mp3Encoder, Mp3EncoderConfig};
 
 use crate::audio::decode::SourceTags;
+use crate::audio::encode::artwork::Artwork;
 use crate::audio::encode::{tags, EncodeSpec};
 use crate::audio::DecodedAudio;
 use crate::error::{CapstoneError, Result};
@@ -48,6 +49,7 @@ pub fn write(
     spec: &EncodeSpec,
     dest: &Path,
     source_tags: &SourceTags,
+    art: Option<&Artwork>,
 ) -> Result<()> {
     let channels = audio.channel_count();
     // rusty_mp3 would take the first two channels and drop the rest without
@@ -79,7 +81,7 @@ pub fn write(
 
     // An ID3v2 tag belongs in front of the first frame, where every decoder
     // skips it by name rather than having to resynchronise past it.
-    let mut bytes = tags::id3v2(source_tags).unwrap_or_default();
+    let mut bytes = tags::id3v2(source_tags, art).unwrap_or_default();
     // `next_packet` reports Again or Eof rather than failing; after `finish`
     // the only way out of this loop is Eof, which is the drain finishing.
     while let Ok(packet) = encoder.next_packet() {

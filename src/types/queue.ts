@@ -24,6 +24,13 @@ export interface ProcessResult {
   clipsRepaired: number;
   gainAppliedDb: number;
   pitchCorrectedCents: number;
+  /** Whether the output carries the source's artist, title and the rest. */
+  keptTags?: boolean;
+  /**
+   * Where the embedded cover came from — the artwork folder, beside the file,
+   * or the source's own tags — or absent when the output has none.
+   */
+  artworkFrom?: string | null;
 }
 
 export interface QueuedFile {
